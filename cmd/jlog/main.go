@@ -16,15 +16,16 @@ type general struct {
 	NoColor            bool   `long:"nocolor" description:"Disable the use of color."`
 	NoElideDuplicates  bool   `long:"noelide" description:"Disable eliding repeated fields."`
 	RelativeTimestamps bool   `long:"relative" short:"r" description:"Print timestamps as a duration since the program started instead of absolute timestamps."`
-	AbsoluteEvery      int    `long:"absolute_every" description:"A compromise between relative and absolute timestamps; output an absolute timestamp, and then a duration relative to that timestamp until --absolute_every lines have been printed.  Implies --relative_timestamps." default:"0"`
-	TimeFormat         string `long:"time_format" short:"t" description:"A go time.Format string describing how to format timestamps; or 'RFC3339'." default:"RFC3339"`
+	AbsoluteEvery      int    `long:"absolute-every" description:"A compromise between relative and absolute timestamps; output an absolute timestamp, and then a duration relative to that timestamp until --absolute-every lines have been printed.  Implies --relative-timestamps." default:"0"`
+	TimeFormat         string `long:"time-format" short:"t" description:"A go time.Format string describing how to format timestamps; or 'RFC3339'." default:"RFC3339"`
 	Lax                bool   `long:"lax" description:"If true, suppress any validation errors including non-JSON log lines and missing timestamps, levels, and message.  We extract as many of those as we can, but if something is missing, the errors will be silently discarded."`
+	NoSummary          bool   `long:"no-summary" description:"Suppress printing the summary at the end."`
 }
 
 type inputFormat struct {
 	LevelKey     string `long:"levelkey" default:"level" description:"JSON key that holds the log level."`
 	TimestampKey string `long:"timekey" default:"ts" description:"JSON key that holds the log timestamp."`
-	MessageKey   string `long:"msgkey" default:"msg" description:"JSON key that holds the log message."`
+	MessageKey   string `long:"messagekey" default:"msg" description:"JSON key that holds the log message."`
 }
 
 func main() {
@@ -68,7 +69,22 @@ func main() {
 			AbsoluteEvery:        gen.AbsoluteEvery,
 		},
 	}
-	if err := parse.ReadLog(os.Stdin, colorable.NewColorableStdout(), ins, outs); err != nil {
+	summary, err := parse.ReadLog(os.Stdin, colorable.NewColorableStdout(), ins, outs)
+	if err != nil {
 		outs.EmitError(err.Error())
+	}
+	os.Stdout.Close()
+	if !gen.NoSummary {
+		lines := "1 line read"
+		if n := summary.Lines; n != 1 {
+			lines = fmt.Sprintf("%d lines read", n)
+		}
+		errors := "; no parse errors"
+		if n := summary.Errors; n == 1 {
+			errors = "; 1 parse error"
+		} else if n > 1 {
+			errors = fmt.Sprintf("; %d parse errors", n)
+		}
+		fmt.Fprintf(os.Stderr, "  %s%s.\n", lines, errors)
 	}
 }

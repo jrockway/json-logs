@@ -34,6 +34,8 @@ type State struct {
 	lastFields                map[string][]byte
 	lastTime                  time.Time
 	linesSinceLastTimePrinted int
+	linesWithErrors           int
+	totalLines                int
 }
 
 // OutputFormatter describes an object that actually does the output formatting.
@@ -88,11 +90,16 @@ func (l *line) pushError(err error) {
 	l.err = fmt.Errorf("%v; %v", l.err, err)
 }
 
+type Summary struct {
+	Lines  int
+	Errors int
+}
+
 // ReadLog reads a stream of JSON-formatted log lines from the provided reader according to the
 // input schema, reformatting it and writing to the provided writer according to the output schema.
 // Parse errors are handled according to the input schema.  Any other errors, not including io.EOF
 // on the reader, are returned.
-func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema) error {
+func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema) (Summary, error) {
 	s := bufio.NewScanner(r)
 	var l line
 	outs.state = State{
@@ -101,6 +108,7 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema) err
 	if outs.Formatter == nil {
 		outs.Formatter = &DefaultOutputFormatter{}
 	}
+	var sum Summary
 	for s.Scan() {
 		l.n++
 		l.raw = s.Bytes()
@@ -109,11 +117,13 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema) err
 		l.fields = make(map[string]interface{})
 		l.lvl = ""
 		ins.ReadLine(&l)
-		if err := outs.Emit(w, &l); err != nil {
-			return fmt.Errorf("emit: line %d: %w", l.n, err)
+		err := outs.Emit(w, &l)
+		sum = Summary{Lines: outs.state.totalLines, Errors: outs.state.linesWithErrors}
+		if err != nil {
+			return sum, fmt.Errorf("emit: line %d: %w", l.n, err)
 		}
 	}
-	return s.Err()
+	return sum, s.Err()
 }
 
 // ReadLine parses a log line into the provided line object.
@@ -174,8 +184,10 @@ func (s *InputSchema) ReadLine(l *line) {
 // Emit emits a formatted line to the provided io.Writer.  The provided line object may not be used
 // again until reinitalized.
 func (s *OutputSchema) Emit(w io.Writer, l *line) (retErr error) {
+	s.state.totalLines++
 	defer func() {
 		if err := recover(); err != nil {
+			s.state.linesWithErrors++
 			w.Write([]byte("\n"))
 			buf := make([]byte, 2048)
 			runtime.Stack(buf, false)
@@ -183,6 +195,7 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) (retErr error) {
 		}
 	}()
 	if l.err != nil {
+		s.state.linesWithErrors++
 		ok := true
 		if _, err := w.Write(l.raw); err != nil {
 			ok = false
@@ -266,6 +279,7 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) (retErr error) {
 		s.EmitError(err.Error())
 	}
 	if len(errs) > 0 {
+		s.state.linesWithErrors++
 		return errors.New("write error; details written to debug log")
 	}
 
