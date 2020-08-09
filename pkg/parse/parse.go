@@ -2,7 +2,6 @@ package parse
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,8 +22,8 @@ type InputSchema struct {
 	MessageKey string     // The name of the key that holds the main log message.
 
 	// If true, print an error when non-JSON lines appear in the input.  If false, treat them
-	// as normal messages that happened at an unknown time and level.
-	StrictObject bool
+	// as normal messages with as much information extracted as possible.
+	Strict bool
 }
 
 // State keeps state between log lines.
@@ -108,6 +107,7 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema) err
 		l.err = nil
 		l.msg = ""
 		l.fields = make(map[string]interface{})
+		l.lvl = ""
 		ins.ReadLine(&l)
 		if err := outs.Emit(w, &l); err != nil {
 			return fmt.Errorf("emit: line %d: %w", l.n, err)
@@ -118,7 +118,7 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema) err
 
 // ReadLine parses a log line into the provided line object.
 func (s *InputSchema) ReadLine(l *line) {
-	if !s.StrictObject && len(l.raw) > 0 && l.raw[0] != '{' {
+	if !s.Strict && len(l.raw) > 0 && l.raw[0] != '{' {
 		l.time = time.Time{}
 		l.msg = string(l.raw)
 		return
@@ -129,7 +129,7 @@ func (s *InputSchema) ReadLine(l *line) {
 	if t, ok := l.fields[s.TimeKey]; s.TimeFormat != nil && ok {
 		time, err := s.TimeFormat(t)
 		if err != nil {
-			l.pushError(fmt.Errorf("parse time %q in key %q: %w", t, s.TimeKey, err))
+			l.pushError(fmt.Errorf("parse time %T(%v) in key %q: %w", t, t, s.TimeKey, err))
 		} else {
 			delete(l.fields, s.TimeKey)
 			l.time = time
@@ -146,7 +146,8 @@ func (s *InputSchema) ReadLine(l *line) {
 			l.msg = string(x)
 			delete(l.fields, s.MessageKey)
 		default:
-			l.pushError(fmt.Errorf("message key %q contains non-string data (%q of type %t)", s.MessageKey, msg, msg))
+			l.msg = string(l.raw)
+			l.pushError(fmt.Errorf("message key %q contains non-string data (%q of type %T)", s.MessageKey, msg, msg))
 		}
 	} else {
 		l.pushError(fmt.Errorf("no message key %q in incoming log", s.MessageKey))
@@ -160,24 +161,25 @@ func (s *InputSchema) ReadLine(l *line) {
 			l.lvl = string(x)
 			delete(l.fields, s.LevelKey)
 		default:
-			l.pushError(fmt.Errorf("level key %q contains non-string data (%q of type %t)", s.LevelKey, lvl, lvl))
+			l.pushError(fmt.Errorf("level key %q contains non-string data (%q of type %T)", s.LevelKey, lvl, lvl))
 		}
 	} else {
 		l.pushError(fmt.Errorf("no level key %q in incoming log", s.LevelKey))
+	}
+	if !s.Strict {
+		l.err = nil
 	}
 }
 
 // Emit emits a formatted line to the provided io.Writer.  The provided line object may not be used
 // again until reinitalized.
-func (s *OutputSchema) Emit(w io.Writer, l *line) error {
+func (s *OutputSchema) Emit(w io.Writer, l *line) (retErr error) {
 	defer func() {
 		if err := recover(); err != nil {
-			s.EmitError(fmt.Sprintf("emit: panic: %s", err))
+			w.Write([]byte("\n"))
 			buf := make([]byte, 2048)
-			n := runtime.Stack(buf, false)
-			for _, l := range bytes.Split(buf[0:n], []byte("\n")) {
-				s.EmitError(string(l))
-			}
+			runtime.Stack(buf, false)
+			retErr = errors.New(fmt.Sprintf("%s\n%s", err, buf))
 		}
 	}()
 	if l.err != nil {
@@ -253,7 +255,6 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) error {
 			errs = append(errs, fmt.Errorf("write field %q: %w", k, err))
 		}
 	}
-	w.Write([]byte("\n"))
 
 	for k := range s.state.lastFields {
 		if _, ok := seenFieldsThisIteration[k]; !ok {
@@ -267,5 +268,7 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) error {
 	if len(errs) > 0 {
 		return errors.New("write error; details written to debug log")
 	}
+
+	w.Write([]byte("\n"))
 	return nil
 }

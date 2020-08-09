@@ -27,6 +27,9 @@ func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w io.Writer) 
 	switch {
 	case t.IsZero():
 		out = "???"
+		for utf8.RuneCountInString(out) < s.timePadding {
+			out = " " + out
+		}
 	case f.AbsoluteEvery > 0:
 		if s.lastTime.IsZero() || s.linesSinceLastTimePrinted >= f.AbsoluteEvery-1 {
 			out = t.In(time.Local).Format(f.AbsoluteTimeFormat)
