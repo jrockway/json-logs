@@ -15,7 +15,8 @@ import (
 type general struct {
 	NoColor            bool   `long:"nocolor" description:"Disable the use of color."`
 	NoElideDuplicates  bool   `long:"noelide" description:"Disable eliding repeated fields."`
-	RelativeTimestamps bool   `long:"relative_timestamps" short:"r" description:"Print timestamps as a duration since the program started instead of absolute timestamps."`
+	RelativeTimestamps bool   `long:"relative" short:"r" description:"Print timestamps as a duration since the program started instead of absolute timestamps."`
+	AbsoluteEvery      int    `long:"absolute_every" description:"A compromise between relative and absolute timestamps; output an absolute timestamp, and then a duration relative to that timestamp until --absolute_every lines have been printed.  Implies --relative_timestamps." default:"0"`
 	TimeFormat         string `long:"time_format" short:"t" description:"A go time.Format string describing how to format timestamps; or 'RFC3339'." default:"RFC3339"`
 }
 
@@ -63,6 +64,7 @@ func main() {
 			TimePrecision:        time.Second,
 			ElideDuplicateFields: !gen.NoElideDuplicates,
 			AbsoluteTimeFormat:   gen.TimeFormat,
+			AbsoluteEvery:        gen.AbsoluteEvery,
 		},
 	}
 	if err := parse.ReadLog(os.Stdin, colorable.NewColorableStdout(), ins, outs); err != nil {

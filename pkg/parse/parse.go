@@ -30,9 +30,11 @@ type InputSchema struct {
 // State keeps state between log lines.
 type State struct {
 	// seenFields maintains an ordering of all fields, so that they are consistent between log lines.
-	seenFields  []string
-	timePadding int
-	lastFields  map[string][]byte
+	seenFields                []string
+	timePadding               int
+	lastFields                map[string][]byte
+	lastTime                  time.Time
+	linesSinceLastTimePrinted int
 }
 
 // OutputFormatter describes an object that actually does the output formatting.
@@ -258,7 +260,6 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) error {
 			delete(s.state.lastFields, k)
 		}
 	}
-
 	// If there were warnings, print them.
 	for _, err := range errs {
 		s.EmitError(err.Error())

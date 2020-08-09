@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	aurora "github.com/logrusorgru/aurora/v3"
 )
@@ -15,7 +16,8 @@ type DefaultOutputFormatter struct {
 	Aurora               aurora.Aurora // Controls the use of color.
 	ElideDuplicateFields bool          // If true, print ↑↑↑ for fields that have an identical value as the previous line.
 	AbsoluteTimeFormat   string        // If true, print relative timestamps instead of absolute timestamps.
-	TimePrecision        time.Duration // Precicion to truncate timestamps to.
+	TimePrecision        time.Duration // Precicion to truncate relative timestamps to.
+	AbsoluteEvery        int           // Print absolute timestamps every this number of lines, with other lines being the delta since the last absolute timestamp.
 }
 
 var programStartTime = time.Now()
@@ -25,15 +27,27 @@ func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w io.Writer) 
 	switch {
 	case t.IsZero():
 		out = "???"
+	case f.AbsoluteEvery > 0:
+		if s.lastTime.IsZero() || s.linesSinceLastTimePrinted >= f.AbsoluteEvery-1 {
+			out = t.In(time.Local).Format(f.AbsoluteTimeFormat)
+			s.linesSinceLastTimePrinted = 0
+			s.lastTime = t
+		} else {
+			out = "+" + t.Sub(s.lastTime).Truncate(time.Microsecond).String()
+			for utf8.RuneCountInString(out) < s.timePadding {
+				out = " " + out
+			}
+			s.linesSinceLastTimePrinted++
+		}
 	case f.AbsoluteTimeFormat != "":
 		out = t.In(time.Local).Format(f.AbsoluteTimeFormat)
 	default:
 		out = programStartTime.Sub(t).Truncate(f.TimePrecision).String()
 	}
-	for len(out) < s.timePadding {
+	for utf8.RuneCountInString(out) < s.timePadding {
 		out += " "
 	}
-	if l := len(out); l > s.timePadding {
+	if l := utf8.RuneCountInString(out); l > s.timePadding {
 		s.timePadding = l
 	}
 	_, err := w.Write([]byte(f.Aurora.Green(out).String()))

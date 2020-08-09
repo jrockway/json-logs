@@ -30,7 +30,7 @@ func DefaultTimeParser(in interface{}) (time.Time, error) {
 		nsec = 0
 	case float64: // zap
 		sec = int64(math.Floor(x))
-		nsec = 1_000_000_000 * int64(x-math.Floor(x))
+		nsec = int64(1_000_000_000 * (x - math.Floor(x)))
 	case string:
 		t, err := time.Parse(time.RFC3339, x)
 		if err != nil {
