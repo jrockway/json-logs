@@ -3,19 +3,32 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/jessevdk/go-flags"
 	"github.com/jrockway/json-logs/pkg/parse"
+	aurora "github.com/logrusorgru/aurora/v3"
+	"github.com/mattn/go-colorable"
+	"github.com/mattn/go-isatty"
 )
 
+type general struct {
+	NoColor bool `long:"nocolor" description:"Disable the use of color"`
+}
+
 type inputFormat struct {
-	TimestampKey string `long:"timekey" short:"t" default:"ts" description:"JSON key that holds the log timestamp"`
-	MessageKey   string `long:"msgkey" short:"m" default:"msg" description:"JSON key that holds the log message"`
+	LevelKey     string `long:"levelkey" default:"level" description:"JSON key that holds the log level"`
+	TimestampKey string `long:"timekey" default:"ts" description:"JSON key that holds the log timestamp"`
+	MessageKey   string `long:"msgkey" default:"msg" description:"JSON key that holds the log message"`
 }
 
 func main() {
+	var gen general
 	var inf inputFormat
 	fp := flags.NewParser(nil, flags.HelpFlag|flags.PassDoubleDash)
+	if _, err := fp.AddGroup("General", "", &gen); err != nil {
+		panic(err)
+	}
 	if _, err := fp.AddGroup("Input Schema", "", &inf); err != nil {
 		panic(err)
 	}
@@ -28,15 +41,20 @@ func main() {
 		os.Exit(3)
 	}
 	ins := &parse.InputSchema{
+		LevelKey:     inf.LevelKey,
 		MessageKey:   inf.MessageKey,
 		TimeKey:      inf.TimestampKey,
-		TimeFormat:   parse.DefaultTimeParserFn,
+		TimeFormat:   parse.DefaultTimeParser,
 		StrictObject: true,
 	}
+	wantColor := isatty.IsTerminal(os.Stdout.Fd()) && !gen.NoColor
 	outs := &parse.OutputSchema{
-		LevelKey: "level",
+		Formatter: &parse.DefaultOutputFormatter{
+			Aurora:        aurora.NewAurora(wantColor),
+			TimePrecision: time.Second,
+		},
 	}
-	if err := parse.ReadLog(os.Stdin, os.Stdout, ins, outs); err != nil {
+	if err := parse.ReadLog(os.Stdin, colorable.NewColorableStdout(), ins, outs); err != nil {
 		outs.EmitError(err.Error())
 	}
 }
