@@ -1,6 +1,7 @@
 package parse
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,7 +14,7 @@ import (
 type DefaultOutputFormatter struct {
 	Aurora               aurora.Aurora // Controls the use of color.
 	ElideDuplicateFields bool          // If true, print ↑↑↑ for fields that have an identical value as the previous line.
-	RelativeTimes        bool          // If true, print relative timestamps instead of absolute timestamps.
+	AbsoluteTimeFormat   string        // If true, print relative timestamps instead of absolute timestamps.
 	TimePrecision        time.Duration // Precicion to truncate timestamps to.
 }
 
@@ -24,6 +25,8 @@ func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w io.Writer) 
 	switch {
 	case t.IsZero():
 		out = "???"
+	case f.AbsoluteTimeFormat != "":
+		out = t.In(time.Local).Format(f.AbsoluteTimeFormat)
 	default:
 		out = programStartTime.Sub(t).Truncate(f.TimePrecision).String()
 	}
@@ -33,7 +36,7 @@ func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w io.Writer) 
 	if l := len(out); l > s.timePadding {
 		s.timePadding = l
 	}
-	_, err := w.Write([]byte(f.Aurora.Cyan(out).String()))
+	_, err := w.Write([]byte(f.Aurora.Green(out).String()))
 	return err
 }
 
@@ -67,20 +70,32 @@ func (f *DefaultOutputFormatter) FormatLevel(s *State, level string, w io.Writer
 }
 
 func (f *DefaultOutputFormatter) FormatField(s *State, k string, v interface{}, w io.Writer) error {
-	if _, err := w.Write([]byte(f.Aurora.Gray(5, k+":").String())); err != nil {
+	if _, err := w.Write([]byte(f.Aurora.Gray(16, k+":").String())); err != nil {
 		return fmt.Errorf("write key: %w", err)
 	}
-	if str, ok := v.(string); ok {
-		if _, err := w.Write([]byte(str)); err != nil {
-			return fmt.Errorf("write string value: %w", err)
+
+	var value []byte
+	switch x := v.(type) {
+	case string:
+		value = []byte(x)
+	default:
+		var err error
+		value, err = json.Marshal(v)
+		if err != nil {
+			return fmt.Errorf("marshal value: %w", err)
 		}
-		return nil
 	}
 
-	value, err := json.Marshal(v)
-	if err != nil {
-		return fmt.Errorf("marshal value: %w", err)
+	if f.ElideDuplicateFields {
+		old, ok := s.lastFields[k]
+		if ok && bytes.Equal(old, value) {
+			s.lastFields[k] = value
+			value = []byte("↑")
+		} else {
+			s.lastFields[k] = value
+		}
 	}
+
 	if _, err := w.Write(value); err != nil {
 		return fmt.Errorf("write value: %w", err)
 	}

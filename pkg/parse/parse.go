@@ -32,6 +32,7 @@ type State struct {
 	// seenFields maintains an ordering of all fields, so that they are consistent between log lines.
 	seenFields  []string
 	timePadding int
+	lastFields  map[string][]byte
 }
 
 // OutputFormatter describes an object that actually does the output formatting.
@@ -93,7 +94,9 @@ func (l *line) pushError(err error) {
 func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema) error {
 	s := bufio.NewScanner(r)
 	var l line
-	outs.state = State{}
+	outs.state = State{
+		lastFields: make(map[string][]byte),
+	}
 	if outs.Formatter == nil {
 		outs.Formatter = &DefaultOutputFormatter{}
 	}
@@ -212,9 +215,12 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) error {
 		errs = append(errs, fmt.Errorf("write message %q: %w", l.msg, err))
 	}
 
+	seenFieldsThisIteration := make(map[string]struct{})
+
 	// Fields the user explicitly wants to see.
 	for _, k := range s.PriorityFields {
 		if v, ok := l.fields[k]; ok {
+			seenFieldsThisIteration[k] = struct{}{}
 			w.Write([]byte(" "))
 			delete(l.fields, k)
 			if err := s.Formatter.FormatField(&s.state, k, v, w); err != nil {
@@ -226,6 +232,7 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) error {
 	// Fields we've seen on past lines.
 	for _, k := range s.state.seenFields {
 		if v, ok := l.fields[k]; ok {
+			seenFieldsThisIteration[k] = struct{}{}
 			w.Write([]byte(" "))
 			delete(l.fields, k)
 			if err := s.Formatter.FormatField(&s.state, k, v, w); err != nil {
@@ -236,6 +243,7 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) error {
 
 	// Any new fields.
 	for k, v := range l.fields {
+		seenFieldsThisIteration[k] = struct{}{}
 		w.Write([]byte(" "))
 		s.state.seenFields = append(s.state.seenFields, k)
 		delete(l.fields, k)
@@ -244,6 +252,12 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) error {
 		}
 	}
 	w.Write([]byte("\n"))
+
+	for k := range s.state.lastFields {
+		if _, ok := seenFieldsThisIteration[k]; !ok {
+			delete(s.state.lastFields, k)
+		}
+	}
 
 	// If there were warnings, print them.
 	for _, err := range errs {
