@@ -167,6 +167,8 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 					l.fields = x
 				case bool:
 					l.pushError(errors.New("unexpected boolean output from jq program; did you mean to use 'select(...)'?"))
+				case nil:
+					l.fields = make(map[string]interface{})
 				default:
 					l.pushError(fmt.Errorf("unexpected result %T(%#v) from jq program", result, result))
 				}
