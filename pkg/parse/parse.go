@@ -36,8 +36,6 @@ type State struct {
 	lastFields                map[string][]byte
 	lastTime                  time.Time
 	linesSinceLastTimePrinted int
-	linesWithErrors           int
-	totalLines                int
 }
 
 // OutputFormatter describes an object that actually does the output formatting.
@@ -75,7 +73,6 @@ func (s *OutputSchema) EmitError(msg string) {
 
 // line represents one log line.
 type line struct {
-	n      int
 	time   time.Time
 	msg    string
 	lvl    string
@@ -113,7 +110,7 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 	}
 	var sum Summary
 	for s.Scan() {
-		l.n++
+		sum.Lines++
 		l.raw = s.Bytes()
 		l.err = nil
 		l.msg = ""
@@ -149,13 +146,17 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 		}
 		if filtered && len(l.fields) == 0 {
 			sum.Filtered++
+			if l.err != nil {
+				sum.Errors++
+			}
 			continue
 		}
 		err := outs.Emit(w, &l)
-		sum.Lines = outs.state.totalLines
-		sum.Errors = outs.state.linesWithErrors
+		if l.err != nil || err != nil {
+			sum.Errors++
+		}
 		if err != nil {
-			return sum, fmt.Errorf("emit: line %d: %w", l.n, err)
+			return sum, fmt.Errorf("emit: line %d: %w", sum.Lines, err)
 		}
 	}
 	return sum, s.Err()
@@ -219,10 +220,8 @@ func (s *InputSchema) ReadLine(l *line) {
 // Emit emits a formatted line to the provided io.Writer.  The provided line object may not be used
 // again until reinitalized.
 func (s *OutputSchema) Emit(w io.Writer, l *line) (retErr error) {
-	s.state.totalLines++
 	defer func() {
 		if err := recover(); err != nil {
-			s.state.linesWithErrors++
 			w.Write([]byte("\n"))
 			buf := make([]byte, 2048)
 			runtime.Stack(buf, false)
@@ -230,7 +229,6 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) (retErr error) {
 		}
 	}()
 	if l.err != nil {
-		s.state.linesWithErrors++
 		ok := true
 		if _, err := w.Write(l.raw); err != nil {
 			ok = false
@@ -314,7 +312,6 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) (retErr error) {
 		s.EmitError(err.Error())
 	}
 	if len(errs) > 0 {
-		s.state.linesWithErrors++
 		return errors.New("write error; details written to debug log")
 	}
 

@@ -339,12 +339,6 @@ func TestEmit(t *testing.T) {
 			if diff := cmp.Diff(f.errors, test.wantErrs, cmp.Comparer(comperror)); diff != "" {
 				t.Errorf("errors:\n%v", diff)
 			}
-			if test.wantState.totalLines == 0 {
-				test.wantState.totalLines = 1
-			}
-			if test.wantState.linesWithErrors == 0 && len(test.wantErrs) > 0 {
-				test.wantState.linesWithErrors = 1
-			}
 			if diff := cmp.Diff(s.state, test.wantState, cmp.AllowUnexported(State{})); diff != "" {
 				t.Errorf("state:\n%v", diff)
 			}
