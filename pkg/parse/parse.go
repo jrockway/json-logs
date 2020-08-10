@@ -28,16 +28,6 @@ type InputSchema struct {
 	Strict bool
 }
 
-// State keeps state between log lines.
-type State struct {
-	// seenFields maintains an ordering of all fields, so that they are consistent between log lines.
-	seenFields                []string
-	timePadding               int
-	lastFields                map[string][]byte
-	lastTime                  time.Time
-	linesSinceLastTimePrinted int
-}
-
 // OutputFormatter describes an object that actually does the output formatting.
 type OutputFormatter interface {
 	// FormatTime is a function that formats a time.Time and outputs it to an io.Writer.
@@ -53,6 +43,16 @@ type OutputFormatter interface {
 	FormatField(s *State, k string, v interface{}, w io.Writer) error
 }
 
+// State keeps state between log lines.
+type State struct {
+	// seenFields maintains an ordering of all fields, so that they are consistent between log lines.
+	seenFields                []string
+	timePadding               int
+	lastFields                map[string][]byte
+	lastTime                  time.Time
+	linesSinceLastTimePrinted int
+}
+
 // OutputSchema controls how output lines are formatted.
 type OutputSchema struct {
 	PriorityFields []string         // PriorityFields controls which fields are printed first.
@@ -65,7 +65,7 @@ type OutputSchema struct {
 // unparseable.
 func (s *OutputSchema) EmitError(msg string) {
 	if s.EmitErrorFn == nil {
-		os.Stderr.WriteString("    ↳ " + msg + "\n")
+		os.Stderr.WriteString("  ↳ " + msg + "\n")
 	} else {
 		s.EmitErrorFn(msg)
 	}
