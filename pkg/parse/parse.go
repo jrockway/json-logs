@@ -16,12 +16,33 @@ import (
 // TimeParser is a function that parses timestamps in log messages.
 type TimeParser func(interface{}) (time.Time, error)
 
+// LevelParser is a function that parses log levels in log messages.
+type LevelParser func(interface{}) (Level, error)
+
+// Level is a log level.  This exists so that you can write jq expressions like
+// "select($LVL<$WARN)".  Whatever logger you're using probably has totally different levels because
+// nobody can agree on them.  Feel free to add them here in the right place.
+type Level int
+
+const (
+	LevelUnknown Level = iota
+	LevelTrace
+	LevelDebug
+	LevelInfo
+	LevelWarn
+	LevelError
+	LevelPanic
+	LevelDPanic
+	LevelFatal
+)
+
 // InputSchema controls the intepretation of incoming log lines.
 type InputSchema struct {
-	TimeKey    string     // The name of the key that holds the timestamp.
-	TimeFormat TimeParser // How to turn the value of the time key into a time.Time.
-	LevelKey   string     // The name of the key that holds the log level.
-	MessageKey string     // The name of the key that holds the main log message.
+	TimeKey     string      // The name of the key that holds the timestamp.
+	TimeFormat  TimeParser  // How to turn the value of the time key into a time.Time.
+	LevelKey    string      // The name of the key that holds the log level.
+	LevelFormat LevelParser // How to turn the value of the level key into a Level.
+	MessageKey  string      // The name of the key that holds the main log message.
 
 	// If true, print an error when non-JSON lines appear in the input.  If false, treat them
 	// as normal messages with as much information extracted as possible.
@@ -34,7 +55,7 @@ type OutputFormatter interface {
 	FormatTime(s *State, t time.Time, w io.Writer) error
 
 	// FormatLevel is a function that formats a log level and outputs it to an io.Writer.
-	FormatLevel(s *State, lvl string, w io.Writer) error
+	FormatLevel(s *State, lvl Level, w io.Writer) error
 
 	// FormatMessage is a function that formats a log message and outputs it to an io.Writer.
 	FormatMessage(s *State, msg string, w io.Writer) error
@@ -75,7 +96,7 @@ func (s *OutputSchema) EmitError(msg string) {
 type line struct {
 	time   time.Time
 	msg    string
-	lvl    string
+	lvl    Level
 	raw    []byte
 	err    error
 	fields map[string]interface{}
@@ -115,7 +136,7 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 		l.err = nil
 		l.msg = ""
 		l.fields = make(map[string]interface{})
-		l.lvl = ""
+		l.lvl = LevelUnknown
 		ins.ReadLine(&l)
 		now := float64(time.Now().UnixNano()) / 1e9
 		ts := float64(l.time.UnixNano()) / 1e9
@@ -199,15 +220,11 @@ func (s *InputSchema) ReadLine(l *line) {
 		l.pushError(fmt.Errorf("no message key %q in incoming log", s.MessageKey))
 	}
 	if lvl, ok := l.fields[s.LevelKey]; ok {
-		switch x := lvl.(type) {
-		case string:
-			l.lvl = x
+		if parsed, err := s.LevelFormat(lvl); err != nil {
+			l.pushError(fmt.Errorf("level key %q: %w", s.LevelKey, err))
+		} else {
+			l.lvl = parsed
 			delete(l.fields, s.LevelKey)
-		case []byte:
-			l.lvl = string(x)
-			delete(l.fields, s.LevelKey)
-		default:
-			l.pushError(fmt.Errorf("level key %q contains non-string data (%q of type %T)", s.LevelKey, lvl, lvl))
 		}
 	} else {
 		l.pushError(fmt.Errorf("no level key %q in incoming log", s.LevelKey))

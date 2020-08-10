@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 )
 
@@ -53,4 +54,37 @@ func DefaultTimeParser(in interface{}) (time.Time, error) {
 		return time.Time{}, errors.New("invalid time format")
 	}
 	return time.Unix(sec, nsec), nil
+}
+
+func DefaultLevelParser(in interface{}) (Level, error) {
+	var level string
+	switch x := in.(type) {
+	case string:
+		level = x
+	case []byte:
+		level = string(x)
+	default:
+		return LevelUnknown, fmt.Errorf("invalid %T(%#v) for log level", in, in)
+	}
+
+	switch strings.ToLower(level) {
+	case "trace":
+		return LevelTrace, nil
+	case "debug":
+		return LevelDebug, nil
+	case "info":
+		return LevelInfo, nil
+	case "warn":
+		return LevelWarn, nil
+	case "error":
+		return LevelError, nil
+	case "panic":
+		return LevelPanic, nil
+	case "dpanic":
+		return LevelDPanic, nil
+	case "fatal":
+		return LevelFatal, nil
+	default:
+		return LevelUnknown, nil
+	}
 }

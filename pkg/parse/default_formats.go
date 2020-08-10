@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -62,22 +61,24 @@ func (f *DefaultOutputFormatter) FormatMessage(s *State, msg string, w io.Writer
 	return err
 }
 
-func (f *DefaultOutputFormatter) FormatLevel(s *State, level string, w io.Writer) error {
+func (f *DefaultOutputFormatter) FormatLevel(s *State, level Level, w io.Writer) error {
 	var l aurora.Value
-	switch strings.ToLower(level) {
-	case "debug":
+	switch level {
+	case LevelTrace:
+		l = f.Aurora.Gray(15, "TRACE")
+	case LevelDebug:
 		l = f.Aurora.Blue("DEBUG")
-	case "info":
+	case LevelInfo:
 		l = f.Aurora.Cyan("INFO ")
-	case "warn":
+	case LevelWarn:
 		l = f.Aurora.Yellow("WARN ")
-	case "error":
+	case LevelError:
 		l = f.Aurora.Red("ERR  ")
-	case "panic":
+	case LevelPanic:
 		l = f.Aurora.Magenta("PANIC")
-	case "dpanic":
+	case LevelDPanic:
 		l = f.Aurora.Magenta("DPANI")
-	case "fatal":
+	case LevelFatal:
 		l = f.Aurora.BgMagenta("FATAL")
 	default:
 		l = f.Aurora.Gray(15, "UNK  ")

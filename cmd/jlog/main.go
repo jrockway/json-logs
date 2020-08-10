@@ -69,11 +69,12 @@ func main() {
 		programs = append(programs, c)
 	}
 	ins := &parse.InputSchema{
-		LevelKey:   inf.LevelKey,
-		MessageKey: inf.MessageKey,
-		TimeKey:    inf.TimestampKey,
-		TimeFormat: parse.DefaultTimeParser,
-		Strict:     !gen.Lax,
+		LevelKey:    inf.LevelKey,
+		MessageKey:  inf.MessageKey,
+		TimeKey:     inf.TimestampKey,
+		TimeFormat:  parse.DefaultTimeParser,
+		LevelFormat: parse.DefaultLevelParser,
+		Strict:      !gen.Lax,
 	}
 	wantColor := isatty.IsTerminal(os.Stdout.Fd()) && !gen.NoColor
 	outs := &parse.OutputSchema{

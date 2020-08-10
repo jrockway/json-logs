@@ -14,28 +14,32 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
-var defaultTime = time.Date(2000, 1, 2, 3, 4, 5, 6, time.UTC)
-var basicParser TimeParser = func(t interface{}) (time.Time, error) {
-	if x, ok := t.(float64); ok {
-		return defaultTime.Add(time.Second * time.Duration(x-1)), nil
+var (
+	defaultTime                = time.Date(2000, 1, 2, 3, 4, 5, 6, time.UTC)
+	basicTimeParser TimeParser = func(t interface{}) (time.Time, error) {
+		if x, ok := t.(float64); ok {
+			return defaultTime.Add(time.Second * time.Duration(x-1)), nil
+		}
+		return time.Time{}, errors.New("invalid timestamp")
 	}
-	return time.Time{}, errors.New("invalid timestamp")
-}
 
-var basicSchema = &InputSchema{
-	LevelKey:   "l",
-	MessageKey: "m",
-	TimeKey:    "t",
-	TimeFormat: basicParser,
-	Strict:     true,
-}
-var laxSchema = &InputSchema{
-	LevelKey:   "l",
-	MessageKey: "m",
-	TimeKey:    "t",
-	TimeFormat: basicParser,
-	Strict:     false,
-}
+	basicSchema = &InputSchema{
+		LevelKey:    "l",
+		MessageKey:  "m",
+		TimeKey:     "t",
+		TimeFormat:  basicTimeParser,
+		LevelFormat: DefaultLevelParser,
+		Strict:      true,
+	}
+	laxSchema = &InputSchema{
+		LevelKey:    "l",
+		MessageKey:  "m",
+		TimeKey:     "t",
+		TimeFormat:  basicTimeParser,
+		LevelFormat: DefaultLevelParser,
+		Strict:      false,
+	}
+)
 
 type matchingError struct{ re *regexp.Regexp }
 
@@ -88,7 +92,7 @@ func TestRead(t *testing.T) {
 			want: &line{
 				err:    nil,
 				time:   defaultTime,
-				lvl:    "info",
+				lvl:    LevelInfo,
 				msg:    "hi",
 				fields: nil,
 			},
@@ -100,7 +104,7 @@ func TestRead(t *testing.T) {
 			want: &line{
 				err:    nil,
 				time:   defaultTime,
-				lvl:    "info",
+				lvl:    LevelInfo,
 				msg:    "hi",
 				fields: map[string]interface{}{"a": "test"},
 			},
@@ -112,7 +116,7 @@ func TestRead(t *testing.T) {
 			want: &line{
 				err:    nil,
 				time:   defaultTime.Add(time.Second),
-				lvl:    "info",
+				lvl:    LevelInfo,
 				msg:    "hi",
 				fields: map[string]interface{}{"a": "test"},
 			},
@@ -123,7 +127,7 @@ func TestRead(t *testing.T) {
 			input: `{"bad_ts":1,"l":"info","m":"hi"}`,
 			want: &line{
 				err:    Match("no time key"),
-				lvl:    "info",
+				lvl:    LevelInfo,
 				msg:    "hi",
 				fields: map[string]interface{}{"bad_ts": float64(1)},
 			},
@@ -134,7 +138,7 @@ func TestRead(t *testing.T) {
 			input: `{"bad_ts":1,"l":"info","m":"hi"}`,
 			want: &line{
 				err:    nil,
-				lvl:    "info",
+				lvl:    LevelInfo,
 				msg:    "hi",
 				fields: map[string]interface{}{"bad_ts": float64(1)},
 			},
@@ -160,7 +164,6 @@ type testFormatter struct {
 
 var (
 	panicTime       = time.Date(2017, 1, 20, 11, 0, 0, 0, time.UTC)
-	panicLevel      = "panic"
 	panicMessage    = "panic"
 	panicFieldValue = "panic"
 )
@@ -176,9 +179,16 @@ func (f *testFormatter) FormatTime(s *State, t time.Time, w io.Writer) error {
 	}
 	return nil
 }
-func (f *testFormatter) FormatLevel(s *State, lvl string, w io.Writer) error {
-	if lvl == panicLevel {
+func (f *testFormatter) FormatLevel(s *State, l Level, w io.Writer) error {
+	if l == LevelPanic {
 		panic("panic")
+	}
+	lvl := "X"
+	switch l {
+	case LevelDebug:
+		lvl = "D"
+	case LevelInfo:
+		lvl = "I"
 	}
 	w.Write([]byte(fmt.Sprintf("{LVL:%s}", lvl)))
 	return nil
@@ -211,7 +221,7 @@ func TestEmit(t *testing.T) {
 		{
 			name: "empty",
 			line: &line{},
-			want: "{LVL:} {TS:∅} {MSG:}",
+			want: "{LVL:X} {TS:∅} {MSG:}",
 		},
 		{
 			name:     "error from previous stage",
@@ -223,7 +233,7 @@ func TestEmit(t *testing.T) {
 			name: "basic",
 			line: &line{
 				time: time.Unix(1, 0),
-				lvl:  "I",
+				lvl:  LevelInfo,
 				msg:  "hello, world!!",
 			},
 			want: "{LVL:I} {TS:1} {MSG:hello, world!!}",
@@ -232,7 +242,7 @@ func TestEmit(t *testing.T) {
 			name: "basic with fields",
 			line: &line{
 				time: time.Unix(2, 0),
-				lvl:  "D",
+				lvl:  LevelDebug,
 				msg:  "hi",
 				fields: map[string]interface{}{
 					"foo": "this is foo",
@@ -256,7 +266,7 @@ func TestEmit(t *testing.T) {
 			name: "panic because of level",
 			line: &line{
 				time: time.Unix(1, 0),
-				lvl:  panicLevel,
+				lvl:  LevelPanic,
 				msg:  "m",
 			},
 			want:     "",
@@ -266,7 +276,7 @@ func TestEmit(t *testing.T) {
 			name: "panic because of time",
 			line: &line{
 				time: panicTime,
-				lvl:  "X",
+				lvl:  LevelUnknown,
 				msg:  "m",
 			},
 			want:     "{LVL:X} ",
@@ -276,7 +286,7 @@ func TestEmit(t *testing.T) {
 			name: "panic because of message",
 			line: &line{
 				time: time.Unix(1, 0),
-				lvl:  "X",
+				lvl:  LevelUnknown,
 				msg:  panicMessage,
 			},
 			want:     "{LVL:X} {TS:1} ",
@@ -286,7 +296,7 @@ func TestEmit(t *testing.T) {
 			name: "panic because of priority field",
 			line: &line{
 				time:   time.Unix(1, 0),
-				lvl:    "X",
+				lvl:    LevelUnknown,
 				msg:    "m",
 				fields: map[string]interface{}{"baz": panicFieldValue, "other": "ok"},
 			},
@@ -297,7 +307,7 @@ func TestEmit(t *testing.T) {
 			name: "panic because of seen field",
 			line: &line{
 				time:   time.Unix(1, 0),
-				lvl:    "X",
+				lvl:    LevelUnknown,
 				msg:    "m",
 				fields: map[string]interface{}{"baz": "ok", "other": panicFieldValue, "even_more": "hi"},
 			},
@@ -310,7 +320,7 @@ func TestEmit(t *testing.T) {
 			name: "panic because of new field",
 			line: &line{
 				time:   time.Unix(1, 0),
-				lvl:    "X",
+				lvl:    LevelUnknown,
 				msg:    "m",
 				fields: map[string]interface{}{"baz": "ok", "other": "still ok", "even_more": panicFieldValue},
 			},
