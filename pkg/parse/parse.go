@@ -117,15 +117,14 @@ type Summary struct {
 }
 
 var DefaultVariables = []string{
-	"$NOW", "$TS",
+	"$TS",
 	"$RAW", "$MSG",
 	"$LVL", "$UNKNOWN", "$TRACE", "$DEBUG", "$INFO", "$WARN", "$ERROR", "$PANIC", "$DPANIC", "$FATAL",
 }
 
 func prepareVariables(l *line) []interface{} {
 	return []interface{}{
-		float64(time.Now().UnixNano()) / 1e9, // $NOW
-		float64(l.time.UnixNano()) / 1e9,     // $TS
+		float64(l.time.UnixNano()) / 1e9, // $TS
 		string(l.raw), l.msg,
 		uint8(l.lvl), uint8(LevelUnknown), uint8(LevelTrace), uint8(LevelDebug), uint8(LevelInfo), uint8(LevelWarn), uint8(LevelError), uint8(LevelPanic), uint8(LevelDPanic), uint8(LevelFatal),
 	}
