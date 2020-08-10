@@ -61,7 +61,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "problem parsing jq program %q:\n%v\n", p, err)
 			os.Exit(1)
 		}
-		c, err := gojq.Compile(q, gojq.WithVariables([]string{"$NOW", "$TS", "$MSG", "$LVL"}))
+		c, err := gojq.Compile(q, gojq.WithVariables(parse.DefaultVariables))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "problem compiling jq program %q:\n%v\n", p, err)
 			os.Exit(1)

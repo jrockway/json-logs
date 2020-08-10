@@ -22,7 +22,7 @@ type LevelParser func(interface{}) (Level, error)
 // Level is a log level.  This exists so that you can write jq expressions like
 // "select($LVL<$WARN)".  Whatever logger you're using probably has totally different levels because
 // nobody can agree on them.  Feel free to add them here in the right place.
-type Level int
+type Level uint8
 
 const (
 	LevelUnknown Level = iota
@@ -116,6 +116,21 @@ type Summary struct {
 	Filtered int
 }
 
+var DefaultVariables = []string{
+	"$NOW", "$TS",
+	"$RAW", "$MSG",
+	"$LVL", "$UNKNOWN", "$TRACE", "$DEBUG", "$INFO", "$WARN", "$ERROR", "$PANIC", "$DPANIC", "$FATAL",
+}
+
+func prepareVariables(l *line) []interface{} {
+	return []interface{}{
+		float64(time.Now().UnixNano()) / 1e9, // $NOW
+		float64(l.time.UnixNano()) / 1e9,     // $TS
+		string(l.raw), l.msg,
+		uint8(l.lvl), uint8(LevelUnknown), uint8(LevelTrace), uint8(LevelDebug), uint8(LevelInfo), uint8(LevelWarn), uint8(LevelError), uint8(LevelPanic), uint8(LevelDPanic), uint8(LevelFatal),
+	}
+}
+
 // ReadLog reads a stream of JSON-formatted log lines from the provided reader according to the
 // input schema, reformatting it and writing to the provided writer according to the output schema.
 // Parse errors are handled according to the input schema.  Any other errors, not including io.EOF
@@ -138,11 +153,9 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 		l.fields = make(map[string]interface{})
 		l.lvl = LevelUnknown
 		ins.ReadLine(&l)
-		now := float64(time.Now().UnixNano()) / 1e9
-		ts := float64(l.time.UnixNano()) / 1e9
 		var filtered bool
 		for _, p := range jq {
-			iter := p.Run(l.fields, now, ts, l.msg, l.lvl)
+			iter := p.Run(l.fields, prepareVariables(&l)...)
 			result, ok := iter.Next()
 			if ok {
 				// We only use the first line that is output.  This can be revisited in the
@@ -152,6 +165,8 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 					l.pushError(fmt.Errorf("error from jq program: %v", x))
 				case map[string]interface{}:
 					l.fields = x
+				case bool:
+					l.pushError(errors.New("unexpected boolean output from jq program; did you mean to use 'select(...)'?"))
 				default:
 					l.pushError(fmt.Errorf("unexpected result %T(%#v) from jq program", result, result))
 				}
