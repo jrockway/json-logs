@@ -9,6 +9,8 @@ import (
 	"os"
 	"runtime"
 	"time"
+
+	"github.com/itchyny/gojq"
 )
 
 // TimeParser is a function that parses timestamps in log messages.
@@ -91,15 +93,16 @@ func (l *line) pushError(err error) {
 }
 
 type Summary struct {
-	Lines  int
-	Errors int
+	Lines    int
+	Errors   int
+	Filtered int
 }
 
 // ReadLog reads a stream of JSON-formatted log lines from the provided reader according to the
 // input schema, reformatting it and writing to the provided writer according to the output schema.
 // Parse errors are handled according to the input schema.  Any other errors, not including io.EOF
 // on the reader, are returned.
-func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema) (Summary, error) {
+func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq []*gojq.Code) (Summary, error) {
 	s := bufio.NewScanner(r)
 	var l line
 	outs.state = State{
@@ -117,8 +120,40 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema) (Su
 		l.fields = make(map[string]interface{})
 		l.lvl = ""
 		ins.ReadLine(&l)
+		now := float64(time.Now().UnixNano()) / 1e9
+		ts := float64(l.time.UnixNano()) / 1e9
+		var filtered bool
+		for _, p := range jq {
+			iter := p.Run(l.fields, now, ts, l.msg, l.lvl)
+			result, ok := iter.Next()
+			if ok {
+				// We only use the first line that is output.  This can be revisited in the
+				// future.
+				switch x := result.(type) {
+				case error:
+					l.pushError(fmt.Errorf("error from jq program: %v", x))
+				case map[string]interface{}:
+					l.fields = x
+				default:
+					l.pushError(fmt.Errorf("unexpected result %T(%#v) from jq program", result, result))
+				}
+				_, ok = iter.Next()
+				if ok {
+					l.pushError(errors.New("jq program unexpectedly produced more than 1 line of output; this is currently unsupported"))
+				}
+			} else {
+				filtered = true
+				l.fields = make(map[string]interface{})
+				break
+			}
+		}
+		if filtered && len(l.fields) == 0 {
+			sum.Filtered++
+			continue
+		}
 		err := outs.Emit(w, &l)
-		sum = Summary{Lines: outs.state.totalLines, Errors: outs.state.linesWithErrors}
+		sum.Lines = outs.state.totalLines
+		sum.Errors = outs.state.linesWithErrors
 		if err != nil {
 			return sum, fmt.Errorf("emit: line %d: %w", l.n, err)
 		}
