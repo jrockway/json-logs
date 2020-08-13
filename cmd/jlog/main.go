@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime/pprof"
 	"strings"
 	"syscall"
 	"time"
@@ -27,6 +28,7 @@ type general struct {
 	JQ           string `short:"e" description:"A jq program to run on the processed input; use this to ignore certain lines, add fields, etc."`
 	NoColor      bool   `short:"m" long:"no-color" description:"Disable the use of color."`
 	NoMonochrome bool   `short:"c" long:"no-monochrome" description:"Force the use of color."`
+	Profile      string `long:"profile" description:"If set, collect a CPU profile and write it to this file."`
 }
 
 type input struct {
@@ -59,6 +61,19 @@ func main() {
 		}
 		fmt.Fprintf(os.Stderr, "flag parsing: %v\n", err)
 		os.Exit(3)
+	}
+	var f *os.File
+	if gen.Profile != "" {
+		var err error
+		f, err = os.Create(gen.Profile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "could not create CPU profile: %v\n", err)
+			os.Exit(1)
+		}
+		if err := pprof.StartCPUProfile(f); err != nil {
+			fmt.Fprintf(os.Stderr, "could not start CPU profile: %v\n", err)
+			os.Exit(1)
+		}
 	}
 	switch strings.ToLower(out.TimeFormat) {
 	case "rfc3339":
@@ -149,6 +164,12 @@ func main() {
 			errors = fmt.Sprintf("; %d parse errors", n)
 		}
 		fmt.Fprintf(os.Stderr, "  %s%s.\n", lines, errors)
+	}
+	if f != nil {
+		pprof.StopCPUProfile()
+		if err := f.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to write CPU profile: %v\n", err)
+		}
 	}
 	if errors.Is(err, syscall.EPIPE) {
 		os.Exit(2)
