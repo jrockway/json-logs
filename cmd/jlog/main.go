@@ -1,9 +1,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/itchyny/gojq"
@@ -114,11 +117,21 @@ func main() {
 			AbsoluteTimeFormat:   out.TimeFormat,
 		},
 	}
+
+	sigCh := make(chan os.Signal)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGPIPE)
+	go func() {
+		c := <-sigCh
+		os.Stderr.Write([]byte("signal: " + c.String() + "\n"))
+		os.Stdin.Close()
+		signal.Stop(sigCh)
+	}()
+
 	summary, err := parse.ReadLog(os.Stdin, colorable.NewColorableStdout(), ins, outs, jq)
 	if err != nil {
 		outs.EmitError(err.Error())
 	}
-	os.Stdout.Close()
+
 	if !out.NoSummary {
 		lines := "1 line read"
 		if n := summary.Lines; n != 1 {
@@ -136,5 +149,10 @@ func main() {
 			errors = fmt.Sprintf("; %d parse errors", n)
 		}
 		fmt.Fprintf(os.Stderr, "  %s%s.\n", lines, errors)
+	}
+	if errors.Is(err, syscall.EPIPE) {
+		os.Exit(2)
+	} else if err != nil {
+		os.Exit(1)
 	}
 }
