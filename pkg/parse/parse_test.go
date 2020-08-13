@@ -459,6 +459,17 @@ func TestReadLog(t *testing.T) {
 			wantFinalErr: nil,
 		},
 		{
+			name:         "valid message with jq program",
+			r:            strings.NewReader("{\"t\":1,\"l\":\"info\",\"m\":\"hi\",\"a\":42}\n"),
+			w:            new(bytes.Buffer),
+			is:           basicSchema,
+			jq:           mustJQ(".a |= . + $LVL"),
+			wantOutput:   "{LVL:I} {TS:946782245} {MSG:hi} {F:A:45}\n",
+			wantSummary:  Summary{Lines: 1},
+			wantErrs:     nil,
+			wantFinalErr: nil,
+		},
+		{
 			name:         "broken json",
 			r:            strings.NewReader("this is not json\n{\"t\":1,\"m\":\"but this is\",\"l\":\"info\"}\n"),
 			w:            new(bytes.Buffer),
