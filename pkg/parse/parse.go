@@ -199,13 +199,16 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 
 // ReadLine parses a log line into the provided line object.
 func (s *InputSchema) ReadLine(l *line) {
-	if !s.Strict && len(l.raw) > 0 && l.raw[0] != '{' {
+	if !s.Strict && ((len(l.raw) > 0 && l.raw[0] != '{') || len(l.raw) == 0) {
 		l.time = time.Time{}
 		l.msg = string(l.raw)
 		return
 	}
 	if err := json.Unmarshal(l.raw, &l.fields); err != nil {
 		l.pushError(fmt.Errorf("unmarshal json: %w", err))
+		if !s.Strict {
+			l.msg = string(l.raw)
+		}
 	}
 	if t, ok := l.fields[s.TimeKey]; s.TimeFormat != nil && ok {
 		time, err := s.TimeFormat(t)

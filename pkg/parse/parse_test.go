@@ -78,11 +78,42 @@ func TestRead(t *testing.T) {
 			},
 		},
 		{
+			name:  "empty message in lax mode",
+			s:     laxSchema,
+			input: ``,
+			want:  &line{},
+		},
+		{
 			name:  "empty json",
 			s:     basicSchema,
 			input: `{}`,
 			want: &line{
+				msg: "",
 				err: Match("no time key.*no message key.*no level key"),
+			},
+		},
+		{
+			name:  "empty json in lax mode",
+			s:     laxSchema,
+			input: `{}`,
+			want: &line{
+				msg: "",
+			},
+		}, {
+			name:  "invalid json",
+			s:     basicSchema,
+			input: `{"not":"json"`,
+			want: &line{
+				msg: "",
+				err: Match("unmarshal json: unexpected end of JSON input"),
+			},
+		},
+		{
+			name:  "empty json in lax mode",
+			s:     laxSchema,
+			input: `{"not":"json"`,
+			want: &line{
+				msg: `{"not":"json"`,
 			},
 		},
 		{
@@ -141,6 +172,28 @@ func TestRead(t *testing.T) {
 				lvl:    LevelInfo,
 				msg:    "hi",
 				fields: map[string]interface{}{"bad_ts": float64(1)},
+			},
+		},
+		{
+			name:  "unparseable timestamp",
+			s:     basicSchema,
+			input: `{"t":"bad","l":"info","m":"hi"}`,
+			want: &line{
+				err:    Match("invalid timestamp"),
+				lvl:    LevelInfo,
+				msg:    "hi",
+				fields: map[string]interface{}{"t": "bad"},
+			},
+		},
+		{
+			name:  "unparseable timestamp with lax schema",
+			s:     laxSchema,
+			input: `{"t":"bad","l":"info","m":"hi"}`,
+			want: &line{
+				err:    nil,
+				lvl:    LevelInfo,
+				msg:    "hi",
+				fields: map[string]interface{}{"t": "bad"},
 			},
 		},
 	}
