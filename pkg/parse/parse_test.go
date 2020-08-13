@@ -426,6 +426,27 @@ type rw interface {
 	Write([]byte) (int, error)
 }
 
+type errReader struct {
+	data []byte
+	err  error
+	i    int
+	n    int
+}
+
+func (r *errReader) Read(buf []byte) (int, error) {
+	var i int
+	for ; i+r.i < r.n && i < len(buf); i++ {
+		buf[i] = r.data[r.i]
+		r.i++
+	}
+	if r.i == r.n {
+		return i, r.err
+	}
+	return i, nil
+}
+
+var goodLine = "{\"t\":1,\"l\":\"info\",\"m\":\"hi\",\"a\":42}\n"
+
 func TestReadLog(t *testing.T) {
 	testData := []struct {
 		name         string
@@ -460,7 +481,7 @@ func TestReadLog(t *testing.T) {
 		},
 		{
 			name:         "valid message with jq program",
-			r:            strings.NewReader("{\"t\":1,\"l\":\"info\",\"m\":\"hi\",\"a\":42}\n"),
+			r:            strings.NewReader(goodLine),
 			w:            new(bytes.Buffer),
 			is:           basicSchema,
 			jq:           mustJQ(".a |= . + $LVL"),
@@ -488,6 +509,16 @@ func TestReadLog(t *testing.T) {
 			wantSummary:  Summary{Lines: 2},
 			wantErrs:     nil,
 			wantFinalErr: nil,
+		},
+		{
+			name:         "read error midway through a line",
+			r:            &errReader{data: []byte(goodLine + goodLine), err: errors.New("explosion!"), n: len(goodLine) + 5},
+			w:            new(bytes.Buffer),
+			is:           basicSchema,
+			wantOutput:   "{LVL:I} {TS:946782245} {MSG:hi} {F:A:42}\n" + goodLine[:5] + "\n",
+			wantSummary:  Summary{Lines: 2, Errors: 1},
+			wantErrs:     []error{Match("unexpected end of JSON input")},
+			wantFinalErr: errors.New("explosion!"),
 		},
 	}
 	for _, test := range testData {
