@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/itchyny/gojq"
 )
 
 var (
@@ -62,6 +63,17 @@ func comperror(x, y error) bool {
 	return x.Error() == y.Error()
 }
 
+func mustJQ(prog string) *gojq.Code {
+	q, err := gojq.Parse(prog)
+	if err != nil {
+		panic(err)
+	}
+	jq, err := gojq.Compile(q, gojq.WithVariables(DefaultVariables))
+	if err != nil {
+		panic(err)
+	}
+	return jq
+}
 func TestRead(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -404,6 +416,90 @@ func TestEmit(t *testing.T) {
 			}
 			if diff := cmp.Diff(s.state, test.wantState, cmp.AllowUnexported(State{})); diff != "" {
 				t.Errorf("state:\n%v", diff)
+			}
+		})
+	}
+}
+
+type rw interface {
+	String() string
+	Write([]byte) (int, error)
+}
+
+func TestReadLog(t *testing.T) {
+	testData := []struct {
+		name         string
+		r            io.Reader
+		w            rw
+		is           *InputSchema
+		jq           *gojq.Code
+		wantOutput   string
+		wantSummary  Summary
+		wantErrs     []error
+		wantFinalErr error
+	}{
+		{
+			name:         "empty input",
+			r:            strings.NewReader("\n"),
+			w:            new(bytes.Buffer),
+			is:           basicSchema,
+			wantOutput:   "\n",
+			wantSummary:  Summary{Lines: 1, Errors: 1},
+			wantErrs:     []error{Match("unexpected end of JSON input")},
+			wantFinalErr: nil,
+		},
+		{
+			name:         "empty input with lax schema",
+			r:            strings.NewReader("\n"),
+			w:            new(bytes.Buffer),
+			is:           laxSchema,
+			wantOutput:   "{LVL:X} {TS:∅} {MSG:}\n",
+			wantSummary:  Summary{Lines: 1},
+			wantErrs:     nil,
+			wantFinalErr: nil,
+		},
+		{
+			name:         "broken json",
+			r:            strings.NewReader("this is not json\n{\"t\":1,\"m\":\"but this is\",\"l\":\"info\"}\n"),
+			w:            new(bytes.Buffer),
+			is:           basicSchema,
+			wantOutput:   "this is not json\n{LVL:I} {TS:946782245} {MSG:but this is}\n",
+			wantSummary:  Summary{Lines: 2, Errors: 1},
+			wantErrs:     []error{Match("unmarshal json")},
+			wantFinalErr: nil,
+		},
+		{
+			name:         "broken json with lax schema",
+			r:            strings.NewReader("this is not json\n{\"t\":1,\"m\":\"but this is\",\"l\":\"info\"}\n"),
+			w:            new(bytes.Buffer),
+			is:           laxSchema,
+			wantOutput:   "{LVL:X} {TS:∅} {MSG:this is not json}\n{LVL:I} {TS:946782245} {MSG:but this is}\n",
+			wantSummary:  Summary{Lines: 2},
+			wantErrs:     nil,
+			wantFinalErr: nil,
+		},
+	}
+	for _, test := range testData {
+		var gotErrs []error
+		os := &OutputSchema{
+			Formatter:   &testFormatter{},
+			EmitErrorFn: func(x string) { gotErrs = append(gotErrs, errors.New(x)) },
+			state:       State{lastFields: make(map[string][]byte)},
+		}
+
+		t.Run(test.name, func(t *testing.T) {
+			summary, err := ReadLog(test.r, test.w, test.is, os, test.jq)
+			if diff := cmp.Diff(test.w.String(), test.wantOutput); diff != "" {
+				t.Errorf("output: %v", diff)
+			}
+			if diff := cmp.Diff(summary, test.wantSummary); diff != "" {
+				t.Errorf("summary: %v", diff)
+			}
+			if diff := cmp.Diff(gotErrs, test.wantErrs, cmp.Comparer(comperror)); diff != "" {
+				t.Errorf("intermediate errors: %v", diff)
+			}
+			if diff := cmp.Diff(err, test.wantFinalErr, cmp.Comparer(comperror)); diff != "" {
+				t.Errorf("final error: %v", diff)
 			}
 		})
 	}
