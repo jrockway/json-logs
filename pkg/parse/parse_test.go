@@ -236,11 +236,13 @@ var (
 func (f *testFormatter) FormatTime(s *State, t time.Time, w io.Writer) error {
 	switch t {
 	case time.Time{}:
-		w.Write([]byte(fmt.Sprintf("{TS:∅}")))
+		_, err := w.Write([]byte(fmt.Sprintf("{TS:∅}")))
+		return err
 	case panicTime:
 		panic("panic")
 	default:
-		w.Write([]byte(fmt.Sprintf("{TS:%d}", t.Unix())))
+		_, err := w.Write([]byte(fmt.Sprintf("{TS:%d}", t.Unix())))
+		return err
 	}
 	return nil
 }
@@ -255,22 +257,22 @@ func (f *testFormatter) FormatLevel(s *State, l Level, w io.Writer) error {
 	case LevelInfo:
 		lvl = "I"
 	}
-	w.Write([]byte(fmt.Sprintf("{LVL:%s}", lvl)))
-	return nil
+	_, err := w.Write([]byte(fmt.Sprintf("{LVL:%s}", lvl)))
+	return err
 }
 func (f *testFormatter) FormatMessage(s *State, msg string, w io.Writer) error {
 	if msg == panicMessage {
 		panic("panic")
 	}
-	w.Write([]byte(fmt.Sprintf("{MSG:%s}", msg)))
-	return nil
+	_, err := w.Write([]byte(fmt.Sprintf("{MSG:%s}", msg)))
+	return err
 }
 func (f *testFormatter) FormatField(s *State, k string, v interface{}, w io.Writer) error {
 	if str, ok := v.(string); ok && str == panicFieldValue {
 		panic("panic")
 	}
-	w.Write([]byte(fmt.Sprintf("{F:%s:%v}", strings.ToUpper(k), v)))
-	return nil
+	_, err := w.Write([]byte(fmt.Sprintf("{F:%s:%v}", strings.ToUpper(k), v)))
+	return err
 }
 
 func TestEmit(t *testing.T) {
@@ -445,6 +447,19 @@ func (r *errReader) Read(buf []byte) (int, error) {
 	return i, nil
 }
 
+type errWriter struct {
+	bytes.Buffer
+	n int
+}
+
+func (w *errWriter) Write(buf []byte) (int, error) {
+	w.n -= len(buf)
+	if w.n <= 0 {
+		return 0, errors.New("broken pipe")
+	}
+	return w.Buffer.Write(buf)
+}
+
 var goodLine = "{\"t\":1,\"l\":\"info\",\"m\":\"hi\",\"a\":42}\n"
 
 func TestReadLog(t *testing.T) {
@@ -476,6 +491,16 @@ func TestReadLog(t *testing.T) {
 			is:           laxSchema,
 			wantOutput:   "{LVL:X} {TS:∅} {MSG:}\n",
 			wantSummary:  Summary{Lines: 1},
+			wantErrs:     nil,
+			wantFinalErr: nil,
+		},
+		{
+			name:         "valid message",
+			r:            strings.NewReader(goodLine + goodLine),
+			w:            new(bytes.Buffer),
+			is:           basicSchema,
+			wantOutput:   "{LVL:I} {TS:946782245} {MSG:hi} {F:A:42}\n{LVL:I} {TS:946782245} {MSG:hi} {F:A:42}\n",
+			wantSummary:  Summary{Lines: 2},
 			wantErrs:     nil,
 			wantFinalErr: nil,
 		},
@@ -520,6 +545,16 @@ func TestReadLog(t *testing.T) {
 			wantErrs:     []error{Match("unexpected end of JSON input")},
 			wantFinalErr: errors.New("explosion!"),
 		},
+		{
+			name:         "write error midway through a line",
+			r:            strings.NewReader(goodLine + goodLine),
+			w:            &errWriter{n: 51},
+			is:           basicSchema,
+			wantOutput:   "{LVL:I} {TS:946782245} {MSG:hi} {F:A:42}\n{LVL:I} ",
+			wantSummary:  Summary{Lines: 2, Errors: 1},
+			wantErrs:     nil,
+			wantFinalErr: Match("broken pipe"),
+		},
 	}
 	for _, test := range testData {
 		var gotErrs []error
@@ -540,8 +575,8 @@ func TestReadLog(t *testing.T) {
 			if diff := cmp.Diff(gotErrs, test.wantErrs, cmp.Comparer(comperror)); diff != "" {
 				t.Errorf("intermediate errors: %v", diff)
 			}
-			if diff := cmp.Diff(err, test.wantFinalErr, cmp.Comparer(comperror)); diff != "" {
-				t.Errorf("final error: %v", diff)
+			if got, want := err, test.wantFinalErr; !comperror(got, want) {
+				t.Errorf("final error:\n  got: %v\n want: %v", got, want)
 			}
 		})
 	}

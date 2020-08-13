@@ -263,26 +263,19 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) (retErr error) {
 		}
 	}()
 	if l.err != nil {
-		ok := true
 		if _, err := w.Write(l.raw); err != nil {
-			ok = false
-			s.EmitError(err.Error())
+			return err
 		}
 		if _, err := w.Write([]byte("\n")); err != nil {
-			ok = false
-			s.EmitError(err.Error())
+			return err
 		}
 		s.EmitError(l.err.Error())
-		if !ok {
-			return errors.New("write error; details written to debug log")
-		}
 		return nil
 	}
-	var errs []error
 
 	// Level.
 	if err := s.Formatter.FormatLevel(&s.state, l.lvl, w); err != nil {
-		errs = append(errs, fmt.Errorf("write level: %w", err))
+		return err
 	}
 	// We don't check for an error here (and on similar writes) because no information is being
 	// lost by the whitespace failing to be written.  You'll know.
@@ -290,13 +283,13 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) (retErr error) {
 
 	// Time.
 	if err := s.Formatter.FormatTime(&s.state, l.time, w); err != nil {
-		errs = append(errs, fmt.Errorf("write time %q: %w", l.time.Format(time.RFC3339), err))
+		return err
 	}
 	w.Write([]byte(" "))
 
 	// Message.
 	if err := s.Formatter.FormatMessage(&s.state, l.msg, w); err != nil {
-		errs = append(errs, fmt.Errorf("write message %q: %w", l.msg, err))
+		return err
 	}
 
 	seenFieldsThisIteration := make(map[string]struct{})
@@ -308,7 +301,7 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) (retErr error) {
 			w.Write([]byte(" "))
 			delete(l.fields, k)
 			if err := s.Formatter.FormatField(&s.state, k, v, w); err != nil {
-				errs = append(errs, fmt.Errorf("write field %q: %w", k, err))
+				return err
 			}
 		}
 	}
@@ -320,7 +313,7 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) (retErr error) {
 			w.Write([]byte(" "))
 			delete(l.fields, k)
 			if err := s.Formatter.FormatField(&s.state, k, v, w); err != nil {
-				errs = append(errs, fmt.Errorf("write field %q: %w", k, err))
+				return err
 			}
 		}
 	}
@@ -332,7 +325,7 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) (retErr error) {
 		s.state.seenFields = append(s.state.seenFields, k)
 		delete(l.fields, k)
 		if err := s.Formatter.FormatField(&s.state, k, v, w); err != nil {
-			errs = append(errs, fmt.Errorf("write field %q: %w", k, err))
+			return err
 		}
 	}
 
@@ -341,14 +334,8 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) (retErr error) {
 			delete(s.state.lastFields, k)
 		}
 	}
-	// If there were warnings, print them.
-	for _, err := range errs {
-		s.EmitError(err.Error())
-	}
-	if len(errs) > 0 {
-		return errors.New("write error; details written to debug log")
-	}
 
+	// Final newline is our responsibility.
 	w.Write([]byte("\n"))
 	return nil
 }
