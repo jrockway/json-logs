@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/itchyny/gojq"
@@ -13,18 +14,20 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
+type output struct {
+	NoElideDuplicates  bool   `long:"no-elide" description:"Disable eliding repeated fields.  By default, fields that have the same value as the line above them have their values replaced with '↑'."`
+	RelativeTimestamps bool   `short:"r" long:"relative" description:"Print timestamps as a duration since the program started instead of absolute timestamps."`
+	TimeFormat         string `short:"t" long:"time-format" description:"A go time.Format string describing how to format timestamps, or one of 'rfc3339', 'unix', 'stamp(milli|micro|nano)'." default:"stamp"`
+	NoSummary          bool   `long:"no-summary" description:"Suppress printing the summary at the end."`
+}
 type general struct {
-	NoColor            bool     `long:"nocolor" description:"Disable the use of color."`
-	NoElideDuplicates  bool     `long:"noelide" description:"Disable eliding repeated fields."`
-	RelativeTimestamps bool     `long:"relative" short:"r" description:"Print timestamps as a duration since the program started instead of absolute timestamps."`
-	AbsoluteEvery      int      `long:"absolute-every" description:"A compromise between relative and absolute timestamps; output an absolute timestamp, and then a duration relative to that timestamp until --absolute-every lines have been printed.  Implies --relative-timestamps." default:"0"`
-	TimeFormat         string   `long:"time-format" short:"t" description:"A go time.Format string describing how to format timestamps; or 'RFC3339'." default:"RFC3339"`
-	Lax                bool     `long:"lax" description:"If true, suppress any validation errors including non-JSON log lines and missing timestamps, levels, and message.  We extract as many of those as we can, but if something is missing, the errors will be silently discarded."`
-	NoSummary          bool     `long:"no-summary" description:"Suppress printing the summary at the end."`
-	JQPrograms         []string `short:"e" description:"Zero or more JQ programs to run on the processed input; use this to ignore certain lines, add fields, etc.  Repeatable; output from previous stages is fed into the next stage.  \"jlog -e 'foo | bar'\" is equivalent to \"jlog -e foo -e bar\"."`
+	JQ           string `short:"e" description:"A jq program to run on the processed input; use this to ignore certain lines, add fields, etc."`
+	NoColor      bool   `short:"m" long:"no-color" description:"Disable the use of color."`
+	NoMonochrome bool   `short:"c" long:"no-monochrome" description:"Force the use of color."`
 }
 
-type inputFormat struct {
+type input struct {
+	Lax          bool   `short:"l" long:"lax" description:"If true, suppress any validation errors including non-JSON log lines and missing timestamps, levels, and message.  We extract as many of those as we can, but if something is missing, the errors will be silently discarded."`
 	LevelKey     string `long:"levelkey" default:"level" description:"JSON key that holds the log level."`
 	TimestampKey string `long:"timekey" default:"ts" description:"JSON key that holds the log timestamp."`
 	MessageKey   string `long:"messagekey" default:"msg" description:"JSON key that holds the log message."`
@@ -32,66 +35,91 @@ type inputFormat struct {
 
 func main() {
 	var gen general
-	var inf inputFormat
+	var in input
+	var out output
 	fp := flags.NewParser(nil, flags.HelpFlag|flags.PassDoubleDash)
-	if _, err := fp.AddGroup("General", "", &gen); err != nil {
+	if _, err := fp.AddGroup("Input Schema", "", &in); err != nil {
 		panic(err)
 	}
-	if _, err := fp.AddGroup("Input Schema", "", &inf); err != nil {
+	if _, err := fp.AddGroup("Output Format", "foo", &out); err != nil {
 		panic(err)
 	}
+	if _, err := fp.AddGroup("General", "bar", &gen); err != nil {
+		panic(err)
+	}
+
 	if _, err := fp.Parse(); err != nil {
 		if ferr, ok := err.(*flags.Error); ok && ferr.Type == flags.ErrHelp {
+			fmt.Fprintf(os.Stderr, "jlog - Search and pretty-print your JSON logs.\nMore info: https://github.com/jrockway/jlog\n")
 			fmt.Fprintf(os.Stderr, ferr.Message)
 			os.Exit(2)
 		}
 		fmt.Fprintf(os.Stderr, "flag parsing: %v\n", err)
 		os.Exit(3)
 	}
-	if gen.TimeFormat == "RFC3339" {
-		gen.TimeFormat = time.RFC3339
+	switch strings.ToLower(out.TimeFormat) {
+	case "rfc3339":
+		out.TimeFormat = time.RFC3339
+	case "unix":
+		out.TimeFormat = time.UnixDate
+	case "stamp":
+		out.TimeFormat = time.Stamp
+	case "stampmilli":
+		out.TimeFormat = time.StampMilli
+	case "stampmicro":
+		out.TimeFormat = time.StampMicro
+	case "stampnano":
+		out.TimeFormat = time.StampNano
 	}
-	if gen.RelativeTimestamps {
-		gen.TimeFormat = ""
+	if out.RelativeTimestamps {
+		out.TimeFormat = ""
 	}
-	var programs []*gojq.Code
-	for _, p := range gen.JQPrograms {
+	var jq *gojq.Code
+	if p := gen.JQ; p != "" {
 		q, err := gojq.Parse(p)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "problem parsing jq program %q:\n%v\n", p, err)
 			os.Exit(1)
 		}
-		c, err := gojq.Compile(q, gojq.WithVariables(parse.DefaultVariables))
+		jq, err = gojq.Compile(q, gojq.WithVariables(parse.DefaultVariables))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "problem compiling jq program %q:\n%v\n", p, err)
 			os.Exit(1)
 		}
-		programs = append(programs, c)
 	}
+
 	ins := &parse.InputSchema{
-		LevelKey:    inf.LevelKey,
-		MessageKey:  inf.MessageKey,
-		TimeKey:     inf.TimestampKey,
+		LevelKey:    in.LevelKey,
+		MessageKey:  in.MessageKey,
+		TimeKey:     in.TimestampKey,
 		TimeFormat:  parse.DefaultTimeParser,
 		LevelFormat: parse.DefaultLevelParser,
-		Strict:      !gen.Lax,
+		Strict:      !in.Lax,
 	}
-	wantColor := isatty.IsTerminal(os.Stdout.Fd()) && !gen.NoColor
+
+	var wantColor = isatty.IsTerminal(os.Stdout.Fd())
+	switch {
+	case gen.NoColor && gen.NoMonochrome:
+		fmt.Fprintf(os.Stderr, "--no-color and --no-monochrome; if you're not sure, just let me decide!\n")
+	case gen.NoColor:
+		wantColor = false
+	case gen.NoMonochrome:
+		wantColor = true
+	}
+
 	outs := &parse.OutputSchema{
 		Formatter: &parse.DefaultOutputFormatter{
 			Aurora:               aurora.NewAurora(wantColor),
-			TimePrecision:        time.Second,
-			ElideDuplicateFields: !gen.NoElideDuplicates,
-			AbsoluteTimeFormat:   gen.TimeFormat,
-			AbsoluteEvery:        gen.AbsoluteEvery,
+			ElideDuplicateFields: !out.NoElideDuplicates,
+			AbsoluteTimeFormat:   out.TimeFormat,
 		},
 	}
-	summary, err := parse.ReadLog(os.Stdin, colorable.NewColorableStdout(), ins, outs, programs)
+	summary, err := parse.ReadLog(os.Stdin, colorable.NewColorableStdout(), ins, outs, jq)
 	if err != nil {
 		outs.EmitError(err.Error())
 	}
 	os.Stdout.Close()
-	if !gen.NoSummary {
+	if !out.NoSummary {
 		lines := "1 line read"
 		if n := summary.Lines; n != 1 {
 			lines = fmt.Sprintf("%d lines read", n)

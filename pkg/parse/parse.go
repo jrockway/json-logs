@@ -134,7 +134,7 @@ func prepareVariables(l *line) []interface{} {
 // input schema, reformatting it and writing to the provided writer according to the output schema.
 // Parse errors are handled according to the input schema.  Any other errors, not including io.EOF
 // on the reader, are returned.
-func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq []*gojq.Code) (Summary, error) {
+func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq *gojq.Code) (Summary, error) {
 	s := bufio.NewScanner(r)
 	var l line
 	outs.state = State{
@@ -151,12 +151,12 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 		l.msg = ""
 		l.fields = make(map[string]interface{})
 		l.lvl = LevelUnknown
+		l.time = time.Time{}
 		ins.ReadLine(&l)
 		var filtered bool
-		for _, p := range jq {
-			iter := p.Run(l.fields, prepareVariables(&l)...)
-			result, ok := iter.Next()
-			if ok {
+		if jq != nil {
+			iter := jq.Run(l.fields, prepareVariables(&l)...)
+			if result, ok := iter.Next(); ok {
 				// We only use the first line that is output.  This can be revisited in the
 				// future.
 				switch x := result.(type) {
@@ -171,14 +171,12 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 				default:
 					l.pushError(fmt.Errorf("unexpected result %T(%#v) from jq program", result, result))
 				}
-				_, ok = iter.Next()
-				if ok {
+				if _, ok = iter.Next(); ok {
 					l.pushError(errors.New("jq program unexpectedly produced more than 1 line of output; this is currently unsupported"))
 				}
 			} else {
 				filtered = true
 				l.fields = make(map[string]interface{})
-				break
 			}
 		}
 		if filtered && len(l.fields) == 0 {

@@ -15,8 +15,6 @@ type DefaultOutputFormatter struct {
 	Aurora               aurora.Aurora // Controls the use of color.
 	ElideDuplicateFields bool          // If true, print ↑↑↑ for fields that have an identical value as the previous line.
 	AbsoluteTimeFormat   string        // If true, print relative timestamps instead of absolute timestamps.
-	TimePrecision        time.Duration // Precicion to truncate relative timestamps to.
-	AbsoluteEvery        int           // Print absolute timestamps every this number of lines, with other lines being the delta since the last absolute timestamp.
 }
 
 var programStartTime = time.Now()
@@ -29,22 +27,26 @@ func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w io.Writer) 
 		for utf8.RuneCountInString(out) < s.timePadding {
 			out = " " + out
 		}
-	case f.AbsoluteEvery > 0:
-		if s.lastTime.IsZero() || s.linesSinceLastTimePrinted >= f.AbsoluteEvery-1 {
-			out = t.In(time.Local).Format(f.AbsoluteTimeFormat)
-			s.linesSinceLastTimePrinted = 0
-			s.lastTime = t
-		} else {
-			out = "+" + t.Sub(s.lastTime).Truncate(time.Microsecond).String()
-			for utf8.RuneCountInString(out) < s.timePadding {
-				out = " " + out
-			}
-			s.linesSinceLastTimePrinted++
+	case f.AbsoluteTimeFormat == "":
+		rel := t.Sub(programStartTime)
+		abs := rel
+		if rel < 0 {
+			abs = -rel
 		}
-	case f.AbsoluteTimeFormat != "":
-		out = t.In(time.Local).Format(f.AbsoluteTimeFormat)
+		var p time.Duration
+		switch {
+		case abs < time.Microsecond:
+			p = time.Nanosecond
+		case abs < time.Millisecond:
+			p = time.Microsecond
+		case abs < time.Second:
+			p = time.Millisecond
+		default:
+			p = time.Second
+		}
+		out = rel.Truncate(p).String()
 	default:
-		out = programStartTime.Sub(t).Truncate(f.TimePrecision).String()
+		out = t.In(time.Local).Format(f.AbsoluteTimeFormat)
 	}
 	for utf8.RuneCountInString(out) < s.timePadding {
 		out += " "
@@ -73,7 +75,7 @@ func (f *DefaultOutputFormatter) FormatLevel(s *State, level Level, w io.Writer)
 	case LevelWarn:
 		l = f.Aurora.Yellow("WARN ")
 	case LevelError:
-		l = f.Aurora.Red("ERR  ")
+		l = f.Aurora.Red("ERROR")
 	case LevelPanic:
 		l = f.Aurora.Magenta("PANIC")
 	case LevelDPanic:
