@@ -130,6 +130,40 @@ func prepareVariables(l *line) []interface{} {
 	}
 }
 
+// runJQ runs the provided jq program on the provided line.  It returns true if the result is empty
+// (i.e., the line should be filtered out), and an error if the output type is invalid or another
+// error occurred.
+func runJQ(jq *gojq.Code, l *line) (bool, error) {
+	if jq == nil {
+		return false, nil
+	}
+	var filtered bool
+	iter := jq.Run(l.fields, prepareVariables(l)...)
+	if result, ok := iter.Next(); ok {
+		switch x := result.(type) {
+		case map[string]interface{}:
+			l.fields = x
+		case nil:
+			return false, errors.New("unexpected nil result; yield an empty map ('{}') to delete all fields")
+		case error:
+			return false, fmt.Errorf("error: %w", x)
+		case bool:
+			return false, errors.New("unexpected boolean output; did you mean to use 'select(...)'?")
+		default:
+			return false, fmt.Errorf("unexpected result type %T(%#v) ", result, result)
+		}
+		if _, ok = iter.Next(); ok {
+			// We only use the first line that is output.  This can be revisited in the
+			// future.
+			return false, errors.New("unexpectedly produced more than 1 output")
+		}
+	} else {
+		filtered = true
+		l.fields = make(map[string]interface{})
+	}
+	return filtered, nil
+}
+
 // ReadLog reads a stream of JSON-formatted log lines from the provided reader according to the
 // input schema, reformatting it and writing to the provided writer according to the output schema.
 // Parse errors are handled according to the input schema.  Any other errors, not including io.EOF
@@ -146,47 +180,34 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 	var sum Summary
 	for s.Scan() {
 		sum.Lines++
+		// Clear line.
 		l.raw = s.Bytes()
 		l.err = nil
 		l.msg = ""
 		l.fields = make(map[string]interface{})
 		l.lvl = LevelUnknown
 		l.time = time.Time{}
+
+		// Parse input.
 		ins.ReadLine(&l)
-		var filtered bool
-		if jq != nil {
-			iter := jq.Run(l.fields, prepareVariables(&l)...)
-			if result, ok := iter.Next(); ok {
-				// We only use the first line that is output.  This can be revisited in the
-				// future.
-				switch x := result.(type) {
-				case error:
-					l.pushError(fmt.Errorf("error from jq program: %v", x))
-				case map[string]interface{}:
-					l.fields = x
-				case bool:
-					l.pushError(errors.New("unexpected boolean output from jq program; did you mean to use 'select(...)'?"))
-				case nil:
-					l.fields = make(map[string]interface{})
-				default:
-					l.pushError(fmt.Errorf("unexpected result %T(%#v) from jq program", result, result))
-				}
-				if _, ok = iter.Next(); ok {
-					l.pushError(errors.New("jq program unexpectedly produced more than 1 line of output; this is currently unsupported"))
-				}
-			} else {
-				filtered = true
-				l.fields = make(map[string]interface{})
-			}
+
+		// Filter.
+		filtered, err := runJQ(jq, &l)
+		if err != nil {
+			sum.Errors++
+			// It is questionable as to whether or not jq breaking means that we should
+			// stop processing the log entirely.  It's probably a bug that affects every
+			// line, so we return the error rather than l.pushError() to display the
+			// error and keep processing.
+			return sum, fmt.Errorf("jq: %w", err)
 		}
-		if filtered && len(l.fields) == 0 {
+		if filtered {
 			sum.Filtered++
-			if l.err != nil {
-				sum.Errors++
-			}
 			continue
 		}
-		err := outs.Emit(w, &l)
+
+		// Emit.
+		err = outs.Emit(w, &l)
 		if l.err != nil || err != nil {
 			sum.Errors++
 		}
