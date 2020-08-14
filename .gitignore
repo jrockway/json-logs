@@ -8,7 +8,10 @@
 # Test binary, built with `go test -c`
 *.test
 
-# Output of the go coverage tool, specifically when used with LiteIDE
+# Output of the go coverage tool.
 *.out
 
+# Random pieces of test data I accumuate while writing this program.
 testlog
+log
+*.log

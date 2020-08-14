@@ -555,6 +555,17 @@ func TestReadLog(t *testing.T) {
 			wantErrs:     nil,
 			wantFinalErr: Match("broken pipe"),
 		},
+		{
+			name:         "filtering out a line",
+			r:            strings.NewReader(goodLine + goodLine),
+			w:            new(bytes.Buffer),
+			is:           basicSchema,
+			jq:           mustJQ("select($TS<0)"),
+			wantOutput:   "",
+			wantSummary:  Summary{Lines: 2, Errors: 0, Filtered: 2},
+			wantErrs:     nil,
+			wantFinalErr: nil,
+		},
 	}
 	for _, test := range testData {
 		var gotErrs []error
