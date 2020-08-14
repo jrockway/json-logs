@@ -55,7 +55,7 @@ func main() {
 
 	if _, err := fp.Parse(); err != nil {
 		if ferr, ok := err.(*flags.Error); ok && ferr.Type == flags.ErrHelp {
-			fmt.Fprintf(os.Stderr, "jlog - Search and pretty-print your JSON logs.\nMore info: https://github.com/jrockway/jlog\n")
+			fmt.Fprintf(os.Stderr, "jlog - Search and pretty-print your JSON logs.\nMore info: https://github.com/jrockway/json-logs\n")
 			fmt.Fprintf(os.Stderr, ferr.Message)
 			os.Exit(2)
 		}
