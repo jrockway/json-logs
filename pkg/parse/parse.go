@@ -70,11 +70,10 @@ type OutputFormatter interface {
 // State keeps state between log lines.
 type State struct {
 	// seenFields maintains an ordering of all fields, so that they are consistent between log lines.
-	seenFields                []string
-	timePadding               int
-	lastFields                map[string][]byte
-	lastTime                  time.Time
-	linesSinceLastTimePrinted int
+	seenFields  []string
+	timePadding int
+	lastFields  map[string][]byte
+	lastTime    time.Time
 }
 
 // OutputSchema controls how output lines are formatted.

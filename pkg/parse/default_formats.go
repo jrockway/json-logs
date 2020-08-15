@@ -12,9 +12,25 @@ import (
 )
 
 type DefaultOutputFormatter struct {
-	Aurora               aurora.Aurora // Controls the use of color.
-	ElideDuplicateFields bool          // If true, print ↑↑↑ for fields that have an identical value as the previous line.
-	AbsoluteTimeFormat   string        // If true, print relative timestamps instead of absolute timestamps.
+	// Controls the use of color.
+	Aurora aurora.Aurora
+	// If true, print ↑ for fields that have an identical value as the previous line.
+	ElideDuplicateFields bool
+	// The time.Format string to show times in, like time.RFC3339.  If empty, show relative
+	// times since the time the program started.  (A minus sign indicates the past; positive
+	// values are in the future, good for when you are following a log file.)
+	AbsoluteTimeFormat string
+	// If non-empty, print only the fractional seconds for log lines that occurred on the same
+	// second as the previous line.  For example, if SecondsOnlyFormat is set to ".000":
+	//
+	// INFO 2020-01-02T03:04:05.123Z first event
+	// INFO                    .456  next event
+	// INFO                    .789  another event
+	// INFO 2020-01-02T03:04:05.000Z a brand new second
+	//
+	// Decimals are only aligned by careful selection of AbsoluteTimeFormat and
+	// SecondsOnlyFormat strings.  The algorithm does nothing smart.
+	SubSecondsOnlyFormat string
 }
 
 var (
@@ -48,6 +64,13 @@ func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w *bytes.Buff
 			p = time.Second
 		}
 		out = rel.Truncate(p).String()
+	case f.SubSecondsOnlyFormat != "":
+		last := s.lastTime.Truncate(time.Second)
+		if t.Sub(last) < time.Second && t.UnixNano() >= last.UnixNano() {
+			out = t.In(tz).Format(f.SubSecondsOnlyFormat)
+		} else {
+			out = t.In(tz).Format(f.AbsoluteTimeFormat)
+		}
 	default:
 		out = t.In(tz).Format(f.AbsoluteTimeFormat)
 	}
@@ -57,8 +80,9 @@ func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w *bytes.Buff
 	if l := utf8.RuneCountInString(out); l > s.timePadding {
 		s.timePadding = l
 	}
-	_, err := w.Write([]byte(f.Aurora.Green(out).String()))
-	return err
+	w.Write([]byte(f.Aurora.Green(out).String()))
+	s.lastTime = t
+	return nil
 }
 
 func (f *DefaultOutputFormatter) FormatMessage(s *State, msg string, w *bytes.Buffer) error {
