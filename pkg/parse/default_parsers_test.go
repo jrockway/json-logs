@@ -21,6 +21,8 @@ func TestDefaultTimeParser(t *testing.T) {
 		{"1970-01-01T00:00:01.000Z", time.Unix(1, 0), false},
 		{"1970-01-01T04:00:01.000+04:00", time.Unix(1, 0), false},
 		{map[string]interface{}{"seconds": float64(123), "nanos": float64(456)}, time.Unix(123, 456), false},
+		{map[string]interface{}{"seconds": "123", "nanos": "456"}, time.Time{}, true},
+		{map[string]interface{}{"garbage": float64(123), "trash": float64(456)}, time.Time{}, true},
 		{nil, time.Time{}, true},
 		{"1", time.Time{}, true},
 	}
@@ -43,6 +45,7 @@ func TestDefaultLevelParser(t *testing.T) {
 		want    Level
 		wantErr bool
 	}{
+		{"tRaCe", LevelTrace, false},
 		{zapcore.DebugLevel.CapitalString(), LevelDebug, false},
 		{[]byte(zapcore.DebugLevel.CapitalString()), LevelDebug, false},
 		{zapcore.InfoLevel.CapitalString(), LevelInfo, false},

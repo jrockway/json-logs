@@ -16,7 +16,10 @@ type DefaultOutputFormatter struct {
 	AbsoluteTimeFormat   string        // If true, print relative timestamps instead of absolute timestamps.
 }
 
-var programStartTime = time.Now()
+var (
+	programStartTime = time.Now()
+	tz               = time.Local
+)
 
 func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w *bytes.Buffer) error {
 	var out string
@@ -45,7 +48,7 @@ func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w *bytes.Buff
 		}
 		out = rel.Truncate(p).String()
 	default:
-		out = t.In(time.Local).Format(f.AbsoluteTimeFormat)
+		out = t.In(tz).Format(f.AbsoluteTimeFormat)
 	}
 	for utf8.RuneCountInString(out) < s.timePadding {
 		out += " "
@@ -84,14 +87,12 @@ func (f *DefaultOutputFormatter) FormatLevel(s *State, level Level, w *bytes.Buf
 	default:
 		l = f.Aurora.Gray(15, "UNK  ")
 	}
-	_, err := w.Write([]byte(l.String()))
-	return err
+	w.Write([]byte(l.String()))
+	return nil
 }
 
 func (f *DefaultOutputFormatter) FormatField(s *State, k string, v interface{}, w *bytes.Buffer) error {
-	if _, err := w.Write([]byte(f.Aurora.Gray(16, k+":").String())); err != nil {
-		return fmt.Errorf("write key: %w", err)
-	}
+	w.Write([]byte(f.Aurora.Gray(16, k+":").String()))
 
 	var value []byte
 	switch x := v.(type) {
@@ -115,8 +116,6 @@ func (f *DefaultOutputFormatter) FormatField(s *State, k string, v interface{}, 
 		}
 	}
 
-	if _, err := w.Write(value); err != nil {
-		return fmt.Errorf("write value: %w", err)
-	}
+	w.Write(value)
 	return nil
 }

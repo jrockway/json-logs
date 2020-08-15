@@ -2,6 +2,7 @@ package parse
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 	"time"
 
@@ -9,9 +10,13 @@ import (
 	"github.com/logrusorgru/aurora/v3"
 )
 
+var defaultTime = time.Date(2000, 1, 2, 3, 4, 5, 6, time.UTC)
+
 func TestFormatting(t *testing.T) {
+	programStartTime = defaultTime.Add(2*time.Hour + 3*time.Minute + 4*time.Second + 500*time.Millisecond + 600*time.Microsecond)
 	testData := []struct {
 		f    *DefaultOutputFormatter
+		t    time.Time
 		want string
 	}{
 		{
@@ -20,7 +25,8 @@ func TestFormatting(t *testing.T) {
 				ElideDuplicateFields: false,
 				AbsoluteTimeFormat:   time.RFC3339,
 			},
-			want: `2000-01-01T22:04:05-05:00  INFO  hello a:field b:{"nesting":"is real"}`,
+			t:    defaultTime,
+			want: `2000-01-02T03:04:05Z INFO  hello a:field b:{"nesting":"is real"}`,
 		},
 		{
 			f: &DefaultOutputFormatter{
@@ -28,7 +34,17 @@ func TestFormatting(t *testing.T) {
 				ElideDuplicateFields: true,
 				AbsoluteTimeFormat:   time.RFC3339,
 			},
-			want: `2000-01-01T22:04:05-05:00  INFO  hello a:field b:↑`,
+			t:    defaultTime,
+			want: `2000-01-02T03:04:05Z INFO  hello a:field b:↑`,
+		},
+		{
+			f: &DefaultOutputFormatter{
+				Aurora:               aurora.NewAurora(false),
+				ElideDuplicateFields: true,
+				AbsoluteTimeFormat:   time.RFC3339,
+			},
+			t:    time.Time{},
+			want: `       ??? INFO  hello a:field b:↑`,
 		},
 		{
 			f: &DefaultOutputFormatter{
@@ -36,18 +52,46 @@ func TestFormatting(t *testing.T) {
 				ElideDuplicateFields: true,
 				AbsoluteTimeFormat:   "",
 			},
-			want: `-2h3m4s                    INFO  hello a:field b:↑`,
+			t:    defaultTime,
+			want: `-2h3m4s    INFO  hello a:field b:↑`,
+		},
+		{
+			f: &DefaultOutputFormatter{
+				Aurora:               aurora.NewAurora(false),
+				ElideDuplicateFields: true,
+				AbsoluteTimeFormat:   "",
+			},
+			t:    programStartTime.Add(-123),
+			want: `-123ns     INFO  hello a:field b:↑`,
+		},
+		{
+			f: &DefaultOutputFormatter{
+				Aurora:               aurora.NewAurora(false),
+				ElideDuplicateFields: true,
+				AbsoluteTimeFormat:   "",
+			},
+			t:    programStartTime.Add(-123456),
+			want: `-123µs     INFO  hello a:field b:↑`,
+		},
+		{
+			f: &DefaultOutputFormatter{
+				Aurora:               aurora.NewAurora(false),
+				ElideDuplicateFields: true,
+				AbsoluteTimeFormat:   "",
+			},
+			t:    programStartTime.Add(-123456789),
+			want: `-123ms     INFO  hello a:field b:↑`,
 		},
 	}
 
 	for _, test := range testData {
 		var s State
-		logTime := time.Date(2000, 1, 2, 3, 4, 5, 6, time.UTC)
-		programStartTime = logTime.Add(2*time.Hour + 3*time.Minute + 4*time.Second + 500*time.Millisecond + 600*time.Microsecond)
 		s.lastFields = map[string][]byte{"b": []byte(`{"nesting":"is real"}`)}
-		s.timePadding = 26
+		s.timePadding = 10
+		tz = time.UTC
+
 		out := new(bytes.Buffer)
-		if err := test.f.FormatTime(&s, logTime, out); err != nil {
+		if err := test.f.FormatTime(&s, test.t, out); err != nil {
 			t.Errorf("time: %v", err)
 		}
 		out.WriteString(" ")
@@ -68,6 +112,29 @@ func TestFormatting(t *testing.T) {
 		}
 		if diff := cmp.Diff(out.String(), test.want); diff != "" {
 			t.Errorf("output: %s", diff)
+		}
+	}
+
+	if err := (&DefaultOutputFormatter{Aurora: aurora.NewAurora(true)}).FormatField(new(State), "fun", func() {}, new(bytes.Buffer)); err == nil {
+		t.Error("formatting a function should fail, but didn't")
+	}
+}
+
+func TestLevelLength(t *testing.T) {
+	for _, color := range []bool{true, false} {
+		f := &DefaultOutputFormatter{Aurora: aurora.NewAurora(color)}
+		var s State
+		buf := new(bytes.Buffer)
+		f.FormatLevel(&s, Level(0), buf)
+		want := buf.Len()
+
+		for i := LevelTrace; i < 100; i++ {
+			var s State
+			buf := new(bytes.Buffer)
+			f.FormatLevel(&s, i, buf)
+			if got := buf.Len(); got != want {
+				fmt.Errorf("length of formmated level %v (color: %v):\n  got: %v\n want: %v", i, color, got, want)
+			}
 		}
 	}
 }
