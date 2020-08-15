@@ -22,7 +22,7 @@ import (
 type output struct {
 	NoElideDuplicates  bool   `long:"no-elide" description:"Disable eliding repeated fields.  By default, fields that have the same value as the line above them have their values replaced with '↑'."`
 	RelativeTimestamps bool   `short:"r" long:"relative" description:"Print timestamps as a duration since the program started instead of absolute timestamps."`
-	TimeFormat         string `short:"t" long:"time-format" description:"A go time.Format string describing how to format timestamps, or one of 'rfc3339', 'unix', 'stamp(milli|micro|nano)'." default:"stamp"`
+	TimeFormat         string `short:"t" long:"time-format" description:"A go time.Format string describing how to format timestamps, or one of 'rfc3339(milli|micro|nano)', 'unix', 'stamp(milli|micro|nano)', or 'kitchen'." default:"stamp"`
 	NoSummary          bool   `long:"no-summary" description:"Suppress printing the summary at the end."`
 }
 type general struct {
@@ -79,6 +79,15 @@ func main() {
 	switch strings.ToLower(out.TimeFormat) {
 	case "rfc3339":
 		out.TimeFormat = time.RFC3339
+	case "rfc3339milli":
+		out.TimeFormat = "2006-01-02T15:04:05.000Z07:00"
+	case "rfc3339micro":
+		out.TimeFormat = "2006-01-02T15:04:05.000000Z07:00"
+	case "rfc3339nano":
+		// time.RFC3339Nano is pretty ugly to look at, because it removes any zeros at the
+		// end of the seconds field.  This adds them back in, so times are always the same
+		// length.
+		out.TimeFormat = "2006-01-02T15:04:05.000000000Z07:00"
 	case "unix":
 		out.TimeFormat = time.UnixDate
 	case "stamp":
@@ -89,6 +98,8 @@ func main() {
 		out.TimeFormat = time.StampMicro
 	case "stampnano":
 		out.TimeFormat = time.StampNano
+	case "kitchen":
+		out.TimeFormat = time.Kitchen
 	}
 	if out.RelativeTimestamps {
 		out.TimeFormat = ""
