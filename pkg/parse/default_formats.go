@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -61,8 +62,8 @@ func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w *bytes.Buff
 }
 
 func (f *DefaultOutputFormatter) FormatMessage(s *State, msg string, w *bytes.Buffer) error {
-	_, err := w.Write([]byte(msg))
-	return err
+	w.WriteString(strings.Replace(msg, "\n", "↩", -1))
+	return nil
 }
 
 func (f *DefaultOutputFormatter) FormatLevel(s *State, level Level, w *bytes.Buffer) error {

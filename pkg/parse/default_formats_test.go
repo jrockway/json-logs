@@ -2,7 +2,6 @@ package parse
 
 import (
 	"bytes"
-	"fmt"
 	"testing"
 	"time"
 
@@ -26,7 +25,7 @@ func TestFormatting(t *testing.T) {
 				AbsoluteTimeFormat:   time.RFC3339,
 			},
 			t:    defaultTime,
-			want: `2000-01-02T03:04:05Z INFO  hello a:field b:{"nesting":"is real"}`,
+			want: `2000-01-02T03:04:05Z INFO  hello↩world a:field b:{"nesting":"is real"}`,
 		},
 		{
 			f: &DefaultOutputFormatter{
@@ -35,7 +34,7 @@ func TestFormatting(t *testing.T) {
 				AbsoluteTimeFormat:   time.RFC3339,
 			},
 			t:    defaultTime,
-			want: `2000-01-02T03:04:05Z INFO  hello a:field b:↑`,
+			want: `2000-01-02T03:04:05Z INFO  hello↩world a:field b:↑`,
 		},
 		{
 			f: &DefaultOutputFormatter{
@@ -44,7 +43,7 @@ func TestFormatting(t *testing.T) {
 				AbsoluteTimeFormat:   time.RFC3339,
 			},
 			t:    time.Time{},
-			want: `       ??? INFO  hello a:field b:↑`,
+			want: `       ??? INFO  hello↩world a:field b:↑`,
 		},
 		{
 			f: &DefaultOutputFormatter{
@@ -53,7 +52,7 @@ func TestFormatting(t *testing.T) {
 				AbsoluteTimeFormat:   "",
 			},
 			t:    defaultTime,
-			want: `-2h3m4s    INFO  hello a:field b:↑`,
+			want: `-2h3m4s    INFO  hello↩world a:field b:↑`,
 		},
 		{
 			f: &DefaultOutputFormatter{
@@ -62,7 +61,7 @@ func TestFormatting(t *testing.T) {
 				AbsoluteTimeFormat:   "",
 			},
 			t:    programStartTime.Add(-123),
-			want: `-123ns     INFO  hello a:field b:↑`,
+			want: `-123ns     INFO  hello↩world a:field b:↑`,
 		},
 		{
 			f: &DefaultOutputFormatter{
@@ -71,7 +70,7 @@ func TestFormatting(t *testing.T) {
 				AbsoluteTimeFormat:   "",
 			},
 			t:    programStartTime.Add(-123456),
-			want: `-123µs     INFO  hello a:field b:↑`,
+			want: `-123µs     INFO  hello↩world a:field b:↑`,
 		},
 		{
 			f: &DefaultOutputFormatter{
@@ -80,7 +79,7 @@ func TestFormatting(t *testing.T) {
 				AbsoluteTimeFormat:   "",
 			},
 			t:    programStartTime.Add(-123456789),
-			want: `-123ms     INFO  hello a:field b:↑`,
+			want: `-123ms     INFO  hello↩world a:field b:↑`,
 		},
 	}
 
@@ -99,7 +98,7 @@ func TestFormatting(t *testing.T) {
 			t.Errorf("level: %v", err)
 		}
 		out.WriteString(" ")
-		if err := test.f.FormatMessage(&s, "hello", out); err != nil {
+		if err := test.f.FormatMessage(&s, "hello\nworld", out); err != nil {
 			t.Errorf("message: %v", err)
 		}
 		out.WriteString(" ")
@@ -121,7 +120,7 @@ func TestFormatting(t *testing.T) {
 }
 
 func TestLevelLength(t *testing.T) {
-	for _, color := range []bool{true, false} {
+	for _, color := range []bool{false} {
 		f := &DefaultOutputFormatter{Aurora: aurora.NewAurora(color)}
 		var s State
 		buf := new(bytes.Buffer)
@@ -133,7 +132,7 @@ func TestLevelLength(t *testing.T) {
 			buf := new(bytes.Buffer)
 			f.FormatLevel(&s, i, buf)
 			if got := buf.Len(); got != want {
-				fmt.Errorf("length of formmated level %v (color: %v):\n  got: %v\n want: %v", i, color, got, want)
+				t.Errorf("length of formmated level %v (color: %v):\n  got: %v\n want: %v", i, color, got, want)
 			}
 		}
 	}
