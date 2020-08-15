@@ -101,16 +101,7 @@ type line struct {
 	msg    string
 	lvl    Level
 	raw    []byte
-	err    error
 	fields map[string]interface{}
-}
-
-func (l *line) pushError(err error) {
-	if l.err == nil {
-		l.err = err
-		return
-	}
-	l.err = fmt.Errorf("%v; %v", l.err, err)
 }
 
 type Summary struct {
@@ -153,7 +144,7 @@ func runJQ(jq *gojq.Code, l *line) (bool, error) {
 		case bool:
 			return false, errors.New("unexpected boolean output; did you mean to use 'select(...)'?")
 		default:
-			return false, fmt.Errorf("unexpected result type %T(%#v) ", result, result)
+			return false, fmt.Errorf("unexpected result type %T(%#v)", result, result)
 		}
 		if _, ok = iter.Next(); ok {
 			// We only use the first line that is output.  This can be revisited in the
@@ -216,7 +207,9 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 					}
 				}
 				if recoverable {
-					outs.EmitError(retErr.Error())
+					if ins.Strict {
+						outs.EmitError(retErr.Error())
+					}
 					retErr = nil
 				}
 				if writeError && !addError {
@@ -239,21 +232,20 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 			// Reset state from the last line.
 			buf.Truncate(0)
 			l.raw = s.Bytes()
-			l.err = nil
 			l.msg = ""
 			l.fields = make(map[string]interface{})
 			l.lvl = LevelUnknown
 			l.time = time.Time{}
 
 			// Parse input.
-			ins.ReadLine(&l)
+			parseErr := ins.ReadLine(&l)
 
 			// Show parse errors in strict mode.
-			if l.err != nil && ins.Strict {
+			if parseErr != nil && ins.Strict {
 				addError = true
 				writeRawLine = true
 				recoverable = true
-				return fmt.Errorf("parse: %w", l.err)
+				return fmt.Errorf("parse: %w", parseErr)
 			}
 
 			// Filter.
@@ -272,10 +264,11 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 			}
 			if filtered {
 				sum.Filtered++
-				if l.err != nil {
+				if parseErr != nil {
 					addError = true
-					writeRawLine = false
 					recoverable = true
+					writeRawLine = false
+					return fmt.Errorf("parse: %w", parseErr)
 				}
 				return nil
 			}
@@ -286,7 +279,7 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 				return fmt.Errorf("emit: %w", err)
 			}
 			// Copying the buffer to the output writer is handled in defer.
-			if l.err != nil {
+			if parseErr != nil {
 				addError = true
 				writeRawLine = false
 				recoverable = true
@@ -302,14 +295,23 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 }
 
 // ReadLine parses a log line into the provided line object.
-func (s *InputSchema) ReadLine(l *line) {
+func (s *InputSchema) ReadLine(l *line) error {
+	var retErr error
+	pushError := func(err error) {
+		if retErr == nil {
+			retErr = err
+			return
+		}
+		retErr = fmt.Errorf("%v; %v", retErr, err)
+	}
+
 	if !s.Strict && ((len(l.raw) > 0 && l.raw[0] != '{') || len(l.raw) == 0) {
 		l.time = time.Time{}
 		l.msg = string(l.raw)
-		return
+		return errors.New("not a JSON object")
 	}
 	if err := json.Unmarshal(l.raw, &l.fields); err != nil {
-		l.pushError(fmt.Errorf("unmarshal json: %w", err))
+		pushError(fmt.Errorf("unmarshal json: %w", err))
 		if !s.Strict {
 			l.msg = string(l.raw)
 		}
@@ -317,42 +319,37 @@ func (s *InputSchema) ReadLine(l *line) {
 	if t, ok := l.fields[s.TimeKey]; s.TimeFormat != nil && ok {
 		time, err := s.TimeFormat(t)
 		if err != nil {
-			l.pushError(fmt.Errorf("parse time %T(%v) in key %q: %w", t, t, s.TimeKey, err))
+			pushError(fmt.Errorf("parse time %T(%v) in key %q: %w", t, t, s.TimeKey, err))
 		} else {
 			delete(l.fields, s.TimeKey)
 			l.time = time
 		}
 	} else {
-		l.pushError(fmt.Errorf("no time key %q in incoming log", s.TimeKey))
+		pushError(fmt.Errorf("no time key %q in incoming log", s.TimeKey))
 	}
 	if msg, ok := l.fields[s.MessageKey]; ok {
 		switch x := msg.(type) {
 		case string:
 			l.msg = x
 			delete(l.fields, s.MessageKey)
-		case []byte:
-			l.msg = string(x)
-			delete(l.fields, s.MessageKey)
 		default:
 			l.msg = string(l.raw)
-			l.pushError(fmt.Errorf("message key %q contains non-string data (%q of type %T)", s.MessageKey, msg, msg))
+			pushError(fmt.Errorf("message key %q contains non-string data (%q of type %T)", s.MessageKey, msg, msg))
 		}
 	} else {
-		l.pushError(fmt.Errorf("no message key %q in incoming log", s.MessageKey))
+		pushError(fmt.Errorf("no message key %q in incoming log", s.MessageKey))
 	}
 	if lvl, ok := l.fields[s.LevelKey]; ok {
 		if parsed, err := s.LevelFormat(lvl); err != nil {
-			l.pushError(fmt.Errorf("level key %q: %w", s.LevelKey, err))
+			pushError(fmt.Errorf("level key %q: %w", s.LevelKey, err))
 		} else {
 			l.lvl = parsed
 			delete(l.fields, s.LevelKey)
 		}
 	} else {
-		l.pushError(fmt.Errorf("no level key %q in incoming log", s.LevelKey))
+		pushError(fmt.Errorf("no level key %q in incoming log", s.LevelKey))
 	}
-	if !s.Strict {
-		l.err = nil
-	}
+	return retErr
 }
 
 // Emit emits a formatted line to the provided buffer.  The provided line object may not be used

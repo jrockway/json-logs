@@ -109,7 +109,6 @@ func (f *DefaultOutputFormatter) FormatField(s *State, k string, v interface{}, 
 	if f.ElideDuplicateFields {
 		old, ok := s.lastFields[k]
 		if ok && bytes.Equal(old, value) {
-			s.lastFields[k] = value
 			value = []byte("↑")
 		} else {
 			s.lastFields[k] = value
