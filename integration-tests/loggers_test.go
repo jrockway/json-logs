@@ -3,18 +3,31 @@ package main
 import (
 	"bytes"
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	joonix "github.com/joonix/log"
 	"github.com/jrockway/json-logs/pkg/parse"
-	"github.com/logrusorgru/aurora/v3"
+	aurora "github.com/logrusorgru/aurora/v3"
+	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
+type ignoreTimeFormatter struct {
+	*parse.DefaultOutputFormatter
+	i int
+}
+
+func (f *ignoreTimeFormatter) FormatTime(s *parse.State, t time.Time, w *bytes.Buffer) error {
+	f.i++
+	w.WriteString(strconv.Itoa(f.i))
+	return nil
+}
+
 func TestLoggers(t *testing.T) {
-	startDate := time.Date(2020, 1, 2, 12, 0, 0, 0, time.UTC)
 	exampleObject := map[string]interface{}{"foo": "bar"}
 	exampleError := errors.New("whoa!")
 	testData := []struct {
@@ -36,35 +49,46 @@ func TestLoggers(t *testing.T) {
 				enc := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
 				core := zapcore.NewCore(enc, zapcore.Lock(zapcore.AddSync(buf)), zap.DebugLevel)
 				l := zap.New(core)
-				var offset time.Duration
-				log := func(msg string, fields ...zap.Field) {
-					e := l.Check(zap.InfoLevel, msg)
-					e.Time = startDate.Add(offset * 500 * time.Millisecond)
-					offset++
-					e.Write(fields...)
-				}
-				log("line 1")
-				log("line 2", zap.String("string", "value"), zap.Int("int", 42), zap.Any("object", exampleObject))
-				log("line 3", zap.Error(exampleError))
+				l.Info("line 1")
+				l.Info("line 2", zap.String("string", "value"), zap.Int("int", 42), zap.Any("object", exampleObject))
+				l.Info("line 3", zap.Error(exampleError))
+			},
+		},
+		{
+			name: "logrus/joonix",
+			ins: &parse.InputSchema{
+				LevelKey:    "severity",
+				MessageKey:  "message",
+				TimeKey:     "timestamp",
+				LevelFormat: parse.DefaultLevelParser,
+				TimeFormat:  parse.DefaultTimeParser,
+				Strict:      true,
+			},
+			f: func(buf *bytes.Buffer) {
+				logrus.SetOutput(buf)
+				logrus.SetFormatter(joonix.NewFormatter())
+				logrus.Info("line 1")
+				logrus.WithField("string", "value").WithField("int", 42).WithField("object", exampleObject).Info("line 2")
+				logrus.WithError(exampleError).Info("line 3")
 			},
 		},
 	}
-
-	outs := &parse.OutputSchema{
-		Formatter: &parse.DefaultOutputFormatter{
+	f := &ignoreTimeFormatter{
+		DefaultOutputFormatter: &parse.DefaultOutputFormatter{
 			Aurora:               aurora.NewAurora(false),
-			AbsoluteTimeFormat:   "2006-01-02T15:04:05.000Z07:00",
+			AbsoluteTimeFormat:   "",
 			ElideDuplicateFields: true,
-			Zone:                 time.UTC,
 		},
 	}
+	outs := &parse.OutputSchema{Formatter: f}
 	want := `
-INFO  2020-01-02T12:00:00.000Z line 1
-INFO  2020-01-02T12:00:00.500Z line 2 string:value int:42 object:{"foo":"bar"}
-INFO  2020-01-02T12:00:01.000Z line 3 error:whoa!
+INFO  1 line 1
+INFO  2 line 2 string:value int:42 object:{"foo":"bar"}
+INFO  3 line 3 error:whoa!
 `
 	for _, test := range testData {
 		t.Run(test.name, func(t *testing.T) {
+			f.i = 0
 			outs.EmitErrorFn = func(msg string) { t.Fatalf("emit error fn: %s", msg) }
 			input := new(bytes.Buffer)
 			output := new(bytes.Buffer)
