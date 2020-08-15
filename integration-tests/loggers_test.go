@@ -65,11 +65,35 @@ func TestLoggers(t *testing.T) {
 				Strict:      true,
 			},
 			f: func(buf *bytes.Buffer) {
-				logrus.SetOutput(buf)
-				logrus.SetFormatter(joonix.NewFormatter())
-				logrus.Info("line 1")
-				logrus.WithField("string", "value").WithField("int", 42).WithField("object", exampleObject).Info("line 2")
-				logrus.WithError(exampleError).Info("line 3")
+				l := &logrus.Logger{
+					Out:       buf,
+					Formatter: joonix.NewFormatter(),
+					Level:     logrus.DebugLevel,
+				}
+				l.Info("line 1")
+				l.WithField("string", "value").WithField("int", 42).WithField("object", exampleObject).Info("line 2")
+				l.WithError(exampleError).Info("line 3")
+			},
+		},
+		{
+			name: "logrus/json",
+			ins: &parse.InputSchema{
+				LevelKey:    "level",
+				MessageKey:  "msg",
+				TimeKey:     "time",
+				LevelFormat: parse.DefaultLevelParser,
+				TimeFormat:  parse.DefaultTimeParser,
+				Strict:      true,
+			},
+			f: func(buf *bytes.Buffer) {
+				l := &logrus.Logger{
+					Out:       buf,
+					Formatter: new(logrus.JSONFormatter),
+					Level:     logrus.DebugLevel,
+				}
+				l.Info("line 1")
+				l.WithField("string", "value").WithField("int", 42).WithField("object", exampleObject).Info("line 2")
+				l.WithError(exampleError).Info("line 3")
 			},
 		},
 	}
