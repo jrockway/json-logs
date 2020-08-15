@@ -80,7 +80,10 @@ func TestLoggers(t *testing.T) {
 			ElideDuplicateFields: true,
 		},
 	}
-	outs := &parse.OutputSchema{Formatter: f}
+	outs := &parse.OutputSchema{
+		PriorityFields: []string{"error", "string", "int", "object"},
+		Formatter:      f,
+	}
 	want := `
 INFO  1 line 1
 INFO  2 line 2 string:value int:42 object:{"foo":"bar"}
