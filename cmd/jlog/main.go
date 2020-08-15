@@ -9,6 +9,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/itchyny/gojq"
 	"github.com/jessevdk/go-flags"
