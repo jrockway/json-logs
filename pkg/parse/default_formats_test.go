@@ -24,6 +24,7 @@ func TestFormatting(t *testing.T) {
 				Aurora:               aurora.NewAurora(false),
 				ElideDuplicateFields: false,
 				AbsoluteTimeFormat:   time.RFC3339,
+				Zone:                 time.UTC,
 			},
 			t:    []time.Time{defaultTime},
 			want: `2000-01-02T03:04:05Z INFO  hello↩world a:field b:{"nesting":"is real"}` + "\n",
@@ -33,6 +34,7 @@ func TestFormatting(t *testing.T) {
 				Aurora:               aurora.NewAurora(false),
 				ElideDuplicateFields: true,
 				AbsoluteTimeFormat:   time.RFC3339,
+				Zone:                 time.UTC,
 			},
 			t:    []time.Time{defaultTime},
 			want: `2000-01-02T03:04:05Z INFO  hello↩world a:field b:↑` + "\n",
@@ -42,6 +44,7 @@ func TestFormatting(t *testing.T) {
 				Aurora:               aurora.NewAurora(false),
 				ElideDuplicateFields: true,
 				AbsoluteTimeFormat:   time.RFC3339,
+				Zone:                 time.UTC,
 			},
 			t:    []time.Time{time.Time{}},
 			want: `       ??? INFO  hello↩world a:field b:↑` + "\n",
@@ -51,6 +54,7 @@ func TestFormatting(t *testing.T) {
 				Aurora:               aurora.NewAurora(false),
 				ElideDuplicateFields: true,
 				AbsoluteTimeFormat:   "",
+				Zone:                 time.UTC,
 			},
 			t:    []time.Time{defaultTime},
 			want: `-2h3m4s    INFO  hello↩world a:field b:↑` + "\n",
@@ -60,6 +64,7 @@ func TestFormatting(t *testing.T) {
 				Aurora:               aurora.NewAurora(false),
 				ElideDuplicateFields: true,
 				AbsoluteTimeFormat:   "",
+				Zone:                 time.UTC,
 			},
 			t:    []time.Time{programStartTime.Add(-123)},
 			want: `-123ns     INFO  hello↩world a:field b:↑` + "\n",
@@ -69,6 +74,7 @@ func TestFormatting(t *testing.T) {
 				Aurora:               aurora.NewAurora(false),
 				ElideDuplicateFields: true,
 				AbsoluteTimeFormat:   "",
+				Zone:                 time.UTC,
 			},
 			t:    []time.Time{programStartTime.Add(-123456)},
 			want: `-123µs     INFO  hello↩world a:field b:↑` + "\n",
@@ -78,6 +84,7 @@ func TestFormatting(t *testing.T) {
 				Aurora:               aurora.NewAurora(false),
 				ElideDuplicateFields: true,
 				AbsoluteTimeFormat:   "",
+				Zone:                 time.UTC,
 			},
 			t:    []time.Time{programStartTime.Add(-123456789)},
 			want: `-123ms     INFO  hello↩world a:field b:↑` + "\n",
@@ -88,6 +95,7 @@ func TestFormatting(t *testing.T) {
 				ElideDuplicateFields: true,
 				AbsoluteTimeFormat:   "03:04:05.000Z07:00",
 				SubSecondsOnlyFormat: "        .000",
+				Zone:                 time.UTC,
 			},
 			t: []time.Time{
 				defaultTime,
@@ -116,7 +124,6 @@ func TestFormatting(t *testing.T) {
 		var s State
 		s.lastFields = map[string][]byte{"b": []byte(`{"nesting":"is real"}`)}
 		s.timePadding = 10
-		tz = time.UTC
 		out := new(bytes.Buffer)
 		for _, ts := range test.t {
 			if err := test.f.FormatTime(&s, ts, out); err != nil {

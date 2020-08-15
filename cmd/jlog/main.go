@@ -159,6 +159,7 @@ func main() {
 			ElideDuplicateFields: !out.NoElideDuplicates,
 			AbsoluteTimeFormat:   out.TimeFormat,
 			SubSecondsOnlyFormat: subsecondFormt,
+			Zone:                 time.Local,
 		},
 	}
 

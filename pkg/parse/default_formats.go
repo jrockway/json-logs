@@ -31,11 +31,12 @@ type DefaultOutputFormatter struct {
 	// Decimals are only aligned by careful selection of AbsoluteTimeFormat and
 	// SecondsOnlyFormat strings.  The algorithm does nothing smart.
 	SubSecondsOnlyFormat string
+	// Zone is the time zone to display the output in.
+	Zone *time.Location
 }
 
 var (
 	programStartTime = time.Now()
-	tz               = time.Local
 )
 
 func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w *bytes.Buffer) error {
@@ -67,12 +68,12 @@ func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w *bytes.Buff
 	case f.SubSecondsOnlyFormat != "":
 		last := s.lastTime.Truncate(time.Second)
 		if t.Sub(last) < time.Second && t.UnixNano() >= last.UnixNano() {
-			out = t.In(tz).Format(f.SubSecondsOnlyFormat)
+			out = t.In(f.Zone).Format(f.SubSecondsOnlyFormat)
 		} else {
-			out = t.In(tz).Format(f.AbsoluteTimeFormat)
+			out = t.In(f.Zone).Format(f.AbsoluteTimeFormat)
 		}
 	default:
-		out = t.In(tz).Format(f.AbsoluteTimeFormat)
+		out = t.In(f.Zone).Format(f.AbsoluteTimeFormat)
 	}
 	for utf8.RuneCountInString(out) < s.timePadding {
 		out += " "
