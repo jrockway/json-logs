@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"time"
 	"unicode/utf8"
 
@@ -19,7 +18,7 @@ type DefaultOutputFormatter struct {
 
 var programStartTime = time.Now()
 
-func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w io.Writer) error {
+func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w *bytes.Buffer) error {
 	var out string
 	switch {
 	case t.IsZero():
@@ -58,12 +57,12 @@ func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w io.Writer) 
 	return err
 }
 
-func (f *DefaultOutputFormatter) FormatMessage(s *State, msg string, w io.Writer) error {
+func (f *DefaultOutputFormatter) FormatMessage(s *State, msg string, w *bytes.Buffer) error {
 	_, err := w.Write([]byte(msg))
 	return err
 }
 
-func (f *DefaultOutputFormatter) FormatLevel(s *State, level Level, w io.Writer) error {
+func (f *DefaultOutputFormatter) FormatLevel(s *State, level Level, w *bytes.Buffer) error {
 	var l aurora.Value
 	switch level {
 	case LevelTrace:
@@ -89,7 +88,7 @@ func (f *DefaultOutputFormatter) FormatLevel(s *State, level Level, w io.Writer)
 	return err
 }
 
-func (f *DefaultOutputFormatter) FormatField(s *State, k string, v interface{}, w io.Writer) error {
+func (f *DefaultOutputFormatter) FormatField(s *State, k string, v interface{}, w *bytes.Buffer) error {
 	if _, err := w.Write([]byte(f.Aurora.Gray(16, k+":").String())); err != nil {
 		return fmt.Errorf("write key: %w", err)
 	}

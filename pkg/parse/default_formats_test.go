@@ -10,7 +10,6 @@ import (
 )
 
 func TestFormatting(t *testing.T) {
-	programStartTime = defaultTime.Add(2*time.Hour + 3*time.Minute + 4*time.Second + 500*time.Millisecond + 600*time.Microsecond)
 	testData := []struct {
 		f    *DefaultOutputFormatter
 		want string
@@ -43,10 +42,12 @@ func TestFormatting(t *testing.T) {
 
 	for _, test := range testData {
 		var s State
+		logTime := time.Date(2000, 1, 2, 3, 4, 5, 6, time.UTC)
+		programStartTime = logTime.Add(2*time.Hour + 3*time.Minute + 4*time.Second + 500*time.Millisecond + 600*time.Microsecond)
 		s.lastFields = map[string][]byte{"b": []byte(`{"nesting":"is real"}`)}
 		s.timePadding = 26
 		out := new(bytes.Buffer)
-		if err := test.f.FormatTime(&s, defaultTime, out); err != nil {
+		if err := test.f.FormatTime(&s, logTime, out); err != nil {
 			t.Errorf("time: %v", err)
 		}
 		out.WriteString(" ")

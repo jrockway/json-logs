@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"regexp"
 	"strings"
 	"testing"
@@ -16,12 +17,11 @@ import (
 )
 
 var (
-	defaultTime                = time.Date(2000, 1, 2, 3, 4, 5, 6, time.UTC)
 	basicTimeParser TimeParser = func(t interface{}) (time.Time, error) {
 		if x, ok := t.(float64); ok {
-			return defaultTime.Add(time.Second * time.Duration(x-1)), nil
+			return time.Unix(int64(math.Trunc(x)), int64(x-math.Trunc(x))*1e9), nil
 		}
-		return time.Time{}, errors.New("invalid timestamp")
+		return time.Unix(-1, 0), errors.New("invalid timestamp")
 	}
 
 	basicSchema = &InputSchema{
@@ -131,10 +131,10 @@ func TestRead(t *testing.T) {
 		{
 			name:  "basic successful parse",
 			s:     basicSchema,
-			input: `{"t":1,"l":"info","m":"hi"}`,
+			input: `{"t":1.0,"l":"info","m":"hi"}`,
 			want: &line{
 				err:    nil,
-				time:   defaultTime,
+				time:   time.Unix(1, 0),
 				lvl:    LevelInfo,
 				msg:    "hi",
 				fields: nil,
@@ -146,7 +146,7 @@ func TestRead(t *testing.T) {
 			input: `{"t":1,"l":"info","m":"hi","a":"test"}`,
 			want: &line{
 				err:    nil,
-				time:   defaultTime,
+				time:   time.Unix(1, 0),
 				lvl:    LevelInfo,
 				msg:    "hi",
 				fields: map[string]interface{}{"a": "test"},
@@ -158,7 +158,7 @@ func TestRead(t *testing.T) {
 			input: `{"t":2,"l":"info","m":"hi","a":"test"}`,
 			want: &line{
 				err:    nil,
-				time:   defaultTime.Add(time.Second),
+				time:   time.Unix(2, 0),
 				lvl:    LevelInfo,
 				msg:    "hi",
 				fields: map[string]interface{}{"a": "test"},
@@ -228,12 +228,12 @@ type testFormatter struct {
 }
 
 var (
-	panicTime       = time.Date(2017, 1, 20, 11, 0, 0, 0, time.UTC)
+	panicTime       = time.Unix(666, 0)
 	panicMessage    = "panic"
 	panicFieldValue = "panic"
 )
 
-func (f *testFormatter) FormatTime(s *State, t time.Time, w io.Writer) error {
+func (f *testFormatter) FormatTime(s *State, t time.Time, w *bytes.Buffer) error {
 	switch t {
 	case time.Time{}:
 		_, err := w.Write([]byte(fmt.Sprintf("{TS:∅}")))
@@ -246,7 +246,7 @@ func (f *testFormatter) FormatTime(s *State, t time.Time, w io.Writer) error {
 	}
 	return nil
 }
-func (f *testFormatter) FormatLevel(s *State, l Level, w io.Writer) error {
+func (f *testFormatter) FormatLevel(s *State, l Level, w *bytes.Buffer) error {
 	if l == LevelPanic {
 		panic("panic")
 	}
@@ -260,14 +260,14 @@ func (f *testFormatter) FormatLevel(s *State, l Level, w io.Writer) error {
 	_, err := w.Write([]byte(fmt.Sprintf("{LVL:%s}", lvl)))
 	return err
 }
-func (f *testFormatter) FormatMessage(s *State, msg string, w io.Writer) error {
+func (f *testFormatter) FormatMessage(s *State, msg string, w *bytes.Buffer) error {
 	if msg == panicMessage {
 		panic("panic")
 	}
 	_, err := w.Write([]byte(fmt.Sprintf("{MSG:%s}", msg)))
 	return err
 }
-func (f *testFormatter) FormatField(s *State, k string, v interface{}, w io.Writer) error {
+func (f *testFormatter) FormatField(s *State, k string, v interface{}, w *bytes.Buffer) error {
 	if str, ok := v.(string); ok && str == panicFieldValue {
 		panic("panic")
 	}
@@ -289,12 +289,6 @@ func TestEmit(t *testing.T) {
 			name: "empty",
 			line: &line{},
 			want: "{LVL:X} {TS:∅} {MSG:}",
-		},
-		{
-			name:     "error from previous stage",
-			line:     &line{raw: []byte("foo"), err: errors.New("bad")},
-			want:     "foo",
-			wantErrs: []error{Match("bad")},
 		},
 		{
 			name: "basic",
@@ -329,73 +323,6 @@ func TestEmit(t *testing.T) {
 				seenFields: []string{"bar", "foo"},
 			},
 		},
-		{
-			name: "panic because of level",
-			line: &line{
-				time: time.Unix(1, 0),
-				lvl:  LevelPanic,
-				msg:  "m",
-			},
-			want:     "",
-			wantErrs: []error{Match("^panic")},
-		},
-		{
-			name: "panic because of time",
-			line: &line{
-				time: panicTime,
-				lvl:  LevelUnknown,
-				msg:  "m",
-			},
-			want:     "{LVL:X} ",
-			wantErrs: []error{Match("^panic")},
-		},
-		{
-			name: "panic because of message",
-			line: &line{
-				time: time.Unix(1, 0),
-				lvl:  LevelUnknown,
-				msg:  panicMessage,
-			},
-			want:     "{LVL:X} {TS:1} ",
-			wantErrs: []error{Match("^panic")},
-		},
-		{
-			name: "panic because of priority field",
-			line: &line{
-				time:   time.Unix(1, 0),
-				lvl:    LevelUnknown,
-				msg:    "m",
-				fields: map[string]interface{}{"baz": panicFieldValue, "other": "ok"},
-			},
-			want:     "{LVL:X} {TS:1} {MSG:m} ",
-			wantErrs: []error{Match("^panic")},
-		},
-		{
-			name: "panic because of seen field",
-			line: &line{
-				time:   time.Unix(1, 0),
-				lvl:    LevelUnknown,
-				msg:    "m",
-				fields: map[string]interface{}{"baz": "ok", "other": panicFieldValue, "even_more": "hi"},
-			},
-			state:     State{seenFields: []string{"other"}},
-			wantState: State{seenFields: []string{"other"}},
-			want:      "{LVL:X} {TS:1} {MSG:m} {F:BAZ:ok} ",
-			wantErrs:  []error{Match("^panic")},
-		},
-		{
-			name: "panic because of new field",
-			line: &line{
-				time:   time.Unix(1, 0),
-				lvl:    LevelUnknown,
-				msg:    "m",
-				fields: map[string]interface{}{"baz": "ok", "other": "still ok", "even_more": panicFieldValue},
-			},
-			state:     State{seenFields: []string{"other"}},
-			wantState: State{seenFields: []string{"other", "even_more"}},
-			want:      "{LVL:X} {TS:1} {MSG:m} {F:BAZ:ok} {F:OTHER:still ok} ",
-			wantErrs:  []error{Match("^panic")},
-		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -407,7 +334,7 @@ func TestEmit(t *testing.T) {
 				PriorityFields: []string{"baz"},
 				state:          test.state,
 			}
-			if err := s.Emit(w, test.line); err != nil {
+			if err := s.Emit(test.line, w); err != nil {
 				f.errors = append(f.errors, err)
 			}
 			if diff := cmp.Diff(w.String(), test.want+"\n"); diff != "" {
@@ -453,11 +380,17 @@ type errWriter struct {
 }
 
 func (w *errWriter) Write(buf []byte) (int, error) {
-	w.n -= len(buf)
-	if w.n <= 0 {
-		return 0, errors.New("broken pipe")
+	maxWrite := len(buf)
+	if w.n < maxWrite {
+		maxWrite = w.n
 	}
-	return w.Buffer.Write(buf)
+	w.n -= maxWrite
+	var err error
+	if w.n <= 0 {
+		err = errors.New("broken pipe")
+	}
+	n, _ := w.Buffer.Write(buf[:maxWrite])
+	return n, err
 }
 
 var goodLine = "{\"t\":1,\"l\":\"info\",\"m\":\"hi\",\"a\":42}\n"
@@ -499,7 +432,7 @@ func TestReadLog(t *testing.T) {
 			r:            strings.NewReader(goodLine + goodLine),
 			w:            new(bytes.Buffer),
 			is:           basicSchema,
-			wantOutput:   "{LVL:I} {TS:946782245} {MSG:hi} {F:A:42}\n{LVL:I} {TS:946782245} {MSG:hi} {F:A:42}\n",
+			wantOutput:   "{LVL:I} {TS:1} {MSG:hi} {F:A:42}\n{LVL:I} {TS:1} {MSG:hi} {F:A:42}\n",
 			wantSummary:  Summary{Lines: 2},
 			wantErrs:     nil,
 			wantFinalErr: nil,
@@ -510,7 +443,7 @@ func TestReadLog(t *testing.T) {
 			w:            new(bytes.Buffer),
 			is:           basicSchema,
 			jq:           mustJQ(".a |= . + $LVL"),
-			wantOutput:   "{LVL:I} {TS:946782245} {MSG:hi} {F:A:45}\n",
+			wantOutput:   "{LVL:I} {TS:1} {MSG:hi} {F:A:45}\n",
 			wantSummary:  Summary{Lines: 1},
 			wantErrs:     nil,
 			wantFinalErr: nil,
@@ -520,7 +453,7 @@ func TestReadLog(t *testing.T) {
 			r:            strings.NewReader("this is not json\n{\"t\":1,\"m\":\"but this is\",\"l\":\"info\"}\n"),
 			w:            new(bytes.Buffer),
 			is:           basicSchema,
-			wantOutput:   "this is not json\n{LVL:I} {TS:946782245} {MSG:but this is}\n",
+			wantOutput:   "this is not json\n{LVL:I} {TS:1} {MSG:but this is}\n",
 			wantSummary:  Summary{Lines: 2, Errors: 1},
 			wantErrs:     []error{Match("unmarshal json")},
 			wantFinalErr: nil,
@@ -530,7 +463,7 @@ func TestReadLog(t *testing.T) {
 			r:            strings.NewReader("this is not json\n{\"t\":1,\"m\":\"but this is\",\"l\":\"info\"}\n"),
 			w:            new(bytes.Buffer),
 			is:           laxSchema,
-			wantOutput:   "{LVL:X} {TS:∅} {MSG:this is not json}\n{LVL:I} {TS:946782245} {MSG:but this is}\n",
+			wantOutput:   "{LVL:X} {TS:∅} {MSG:this is not json}\n{LVL:I} {TS:1} {MSG:but this is}\n",
 			wantSummary:  Summary{Lines: 2},
 			wantErrs:     nil,
 			wantFinalErr: nil,
@@ -540,7 +473,7 @@ func TestReadLog(t *testing.T) {
 			r:            &errReader{data: []byte(goodLine + goodLine), err: errors.New("explosion!"), n: len(goodLine) + 5},
 			w:            new(bytes.Buffer),
 			is:           basicSchema,
-			wantOutput:   "{LVL:I} {TS:946782245} {MSG:hi} {F:A:42}\n" + goodLine[:5] + "\n",
+			wantOutput:   "{LVL:I} {TS:1} {MSG:hi} {F:A:42}\n" + goodLine[:5] + "\n",
 			wantSummary:  Summary{Lines: 2, Errors: 1},
 			wantErrs:     []error{Match("unexpected end of JSON input")},
 			wantFinalErr: errors.New("explosion!"),
@@ -548,9 +481,19 @@ func TestReadLog(t *testing.T) {
 		{
 			name:         "write error midway through a line",
 			r:            strings.NewReader(goodLine + goodLine),
-			w:            &errWriter{n: 51},
+			w:            &errWriter{n: 43},
 			is:           basicSchema,
-			wantOutput:   "{LVL:I} {TS:946782245} {MSG:hi} {F:A:42}\n{LVL:I} ",
+			wantOutput:   "{LVL:I} {TS:1} {MSG:hi} {F:A:42}\n{LVL:I} {T",
+			wantSummary:  Summary{Lines: 2, Errors: 1},
+			wantErrs:     nil,
+			wantFinalErr: Match("broken pipe"),
+		},
+		{
+			name:         "write error midway through a line (2)",
+			r:            strings.NewReader(goodLine + goodLine),
+			w:            &errWriter{n: 44},
+			is:           basicSchema,
+			wantOutput:   "{LVL:I} {TS:1} {MSG:hi} {F:A:42}\n{LVL:I} {TS",
 			wantSummary:  Summary{Lines: 2, Errors: 1},
 			wantErrs:     nil,
 			wantFinalErr: Match("broken pipe"),
@@ -572,10 +515,50 @@ func TestReadLog(t *testing.T) {
 			w:            new(bytes.Buffer),
 			is:           basicSchema,
 			jq:           mustJQ("{}"),
-			wantOutput:   "{LVL:I} {TS:946782245} {MSG:hi}\n",
+			wantOutput:   "{LVL:I} {TS:1} {MSG:hi}\n",
 			wantSummary:  Summary{Lines: 1, Errors: 0, Filtered: 0},
 			wantErrs:     nil,
 			wantFinalErr: nil,
+		},
+		{
+			name:         "panic because of level",
+			r:            strings.NewReader(`{"t":1,"l":"panic","m":"m","foo":"bar"}` + "\n"),
+			w:            new(bytes.Buffer),
+			is:           basicSchema,
+			wantOutput:   `{"t":1,"l":"panic","m":"m","foo":"bar"}` + "\n",
+			wantSummary:  Summary{Lines: 1, Errors: 1, Filtered: 0},
+			wantErrs:     nil,
+			wantFinalErr: Match("panic"),
+		},
+		{
+			name:         "panic because of time",
+			r:            strings.NewReader(`{"t":666,"l":"info","m":"m","foo":"bar"}` + "\n"),
+			w:            new(bytes.Buffer),
+			is:           basicSchema,
+			wantOutput:   `{LVL:I} ` + `{"t":666,"l":"info","m":"m","foo":"bar"}` + "\n",
+			wantSummary:  Summary{Lines: 1, Errors: 1, Filtered: 0},
+			wantErrs:     nil,
+			wantFinalErr: Match("panic"),
+		},
+		{
+			name:         "panic because of message",
+			r:            strings.NewReader(`{"t":1,"l":"info","m":"panic","foo":"bar"}` + "\n"),
+			w:            new(bytes.Buffer),
+			is:           basicSchema,
+			wantOutput:   `{LVL:I} {TS:1} ` + `{"t":1,"l":"info","m":"panic","foo":"bar"}` + "\n",
+			wantSummary:  Summary{Lines: 1, Errors: 1, Filtered: 0},
+			wantErrs:     nil,
+			wantFinalErr: Match("panic"),
+		},
+		{
+			name:         "panic because of field",
+			r:            strings.NewReader(`{"t":1,"l":"info","m":"m","a":"first","foo":"panic"}` + "\n"),
+			w:            new(bytes.Buffer),
+			is:           basicSchema,
+			wantOutput:   `{LVL:I} {TS:1} {MSG:m} {F:A:first} ` + `{"t":1,"l":"info","m":"m","a":"first","foo":"panic"}` + "\n",
+			wantSummary:  Summary{Lines: 1, Errors: 1, Filtered: 0},
+			wantErrs:     nil,
+			wantFinalErr: Match("panic"),
 		},
 		// These jq tests are here because I am not sure that I want to make a single jq
 		// error abort processing entirely yet.
@@ -585,7 +568,7 @@ func TestReadLog(t *testing.T) {
 			w:            new(bytes.Buffer),
 			is:           basicSchema,
 			jq:           mustJQ("null"),
-			wantOutput:   "",
+			wantOutput:   goodLine,
 			wantSummary:  Summary{Lines: 1, Errors: 1, Filtered: 0},
 			wantErrs:     nil,
 			wantFinalErr: Match("unexpected nil"),
@@ -596,7 +579,7 @@ func TestReadLog(t *testing.T) {
 			w:            new(bytes.Buffer),
 			is:           basicSchema,
 			jq:           mustJQ("error(\"goodbye\")"),
-			wantOutput:   "",
+			wantOutput:   goodLine,
 			wantSummary:  Summary{Lines: 1, Errors: 1, Filtered: 0},
 			wantErrs:     nil,
 			wantFinalErr: Match("goodbye"),
@@ -607,7 +590,7 @@ func TestReadLog(t *testing.T) {
 			w:            new(bytes.Buffer),
 			is:           basicSchema,
 			jq:           mustJQ("{},{}"),
-			wantOutput:   "",
+			wantOutput:   goodLine,
 			wantSummary:  Summary{Lines: 1, Errors: 1, Filtered: 0},
 			wantErrs:     nil,
 			wantFinalErr: Match("unexpectedly produced more than 1 output"),
@@ -616,9 +599,10 @@ func TestReadLog(t *testing.T) {
 	for _, test := range testData {
 		var gotErrs []error
 		os := &OutputSchema{
-			Formatter:   &testFormatter{},
-			EmitErrorFn: func(x string) { gotErrs = append(gotErrs, errors.New(x)) },
-			state:       State{lastFields: make(map[string][]byte)},
+			Formatter:      &testFormatter{},
+			EmitErrorFn:    func(x string) { gotErrs = append(gotErrs, errors.New(x)) },
+			PriorityFields: []string{"a"},
+			state:          State{lastFields: make(map[string][]byte)},
 		}
 
 		t.Run(test.name, func(t *testing.T) {

@@ -2,6 +2,7 @@ package parse
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -49,19 +50,21 @@ type InputSchema struct {
 	Strict bool
 }
 
-// OutputFormatter describes an object that actually does the output formatting.
+// OutputFormatter describes an object that actually does the output formatting.  Methods take a
+// bytes.Buffer so they can output incrementally as with an io.Writer, but without worrying about
+// write errors or short writes.
 type OutputFormatter interface {
 	// FormatTime is a function that formats a time.Time and outputs it to an io.Writer.
-	FormatTime(s *State, t time.Time, w io.Writer) error
+	FormatTime(s *State, t time.Time, w *bytes.Buffer) error
 
 	// FormatLevel is a function that formats a log level and outputs it to an io.Writer.
-	FormatLevel(s *State, lvl Level, w io.Writer) error
+	FormatLevel(s *State, lvl Level, w *bytes.Buffer) error
 
 	// FormatMessage is a function that formats a log message and outputs it to an io.Writer.
-	FormatMessage(s *State, msg string, w io.Writer) error
+	FormatMessage(s *State, msg string, w *bytes.Buffer) error
 
 	// FormatField is a function that formats a (key, value) pair and outputs it to an io.Writer.
-	FormatField(s *State, k string, v interface{}, w io.Writer) error
+	FormatField(s *State, k string, v interface{}, w *bytes.Buffer) error
 }
 
 // State keeps state between log lines.
@@ -178,41 +181,121 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 		outs.Formatter = &DefaultOutputFormatter{}
 	}
 	var sum Summary
+	buf := new(bytes.Buffer)
 	for s.Scan() {
 		sum.Lines++
-		// Clear line.
-		l.raw = s.Bytes()
-		l.err = nil
-		l.msg = ""
-		l.fields = make(map[string]interface{})
-		l.lvl = LevelUnknown
-		l.time = time.Time{}
 
-		// Parse input.
-		ins.ReadLine(&l)
+		err := func() (retErr error) {
+			var addError, writeRawLine, recoverable bool
 
-		// Filter.
-		filtered, err := runJQ(jq, &l)
+			// Adjust counters, print debugging information, flush buffers on the way
+			// out, no matter what.
+			defer func() {
+				if addError {
+					sum.Errors++
+				}
+				var writeError bool
+				if buf.Len() > 0 {
+					if _, err := buf.WriteTo(w); err != nil {
+						recoverable = false
+						writeError = true
+						if retErr != nil {
+							retErr = fmt.Errorf("write remaining buffer content: %w (while flushing buffer after error %v)", err, retErr)
+						} else {
+							retErr = fmt.Errorf("write remaining buffer content: %w", err)
+						}
+					}
+				}
+				if writeRawLine {
+					buf.Write(l.raw)
+					buf.WriteString("\n")
+					if _, err := buf.WriteTo(w); err != nil {
+						writeError = true
+						recoverable = false
+						retErr = fmt.Errorf("write raw line: %w (while printing raw log that caused error %v)", err, retErr)
+					}
+				}
+				if recoverable {
+					outs.EmitError(retErr.Error())
+					retErr = nil
+				}
+				if writeError && !addError {
+					sum.Errors++
+				}
+			}()
+
+			// Scope panics to the line that caused them.
+			defer func() {
+				if err := recover(); err != nil {
+					addError = true
+					writeRawLine = true
+					recoverable = false
+					stack := make([]byte, 2048)
+					runtime.Stack(stack, false)
+					retErr = errors.New(fmt.Sprintf("%s\n%s", err, stack))
+				}
+			}()
+
+			// Reset state from the last line.
+			buf.Truncate(0)
+			l.raw = s.Bytes()
+			l.err = nil
+			l.msg = ""
+			l.fields = make(map[string]interface{})
+			l.lvl = LevelUnknown
+			l.time = time.Time{}
+
+			// Parse input.
+			ins.ReadLine(&l)
+
+			// Show parse errors in strict mode.
+			if l.err != nil && ins.Strict {
+				addError = true
+				writeRawLine = true
+				recoverable = true
+				return fmt.Errorf("parse: %w", l.err)
+			}
+
+			// Filter.
+			filtered, err := runJQ(jq, &l)
+			if err != nil {
+				addError = true
+				writeRawLine = true
+				recoverable = false
+				// It is questionable as to whether or not jq breaking means that we
+				// should stop processing the log entirely.  It's probably a bug in
+				// the jq program that affects every line, so the sooner we return
+				// the error, the sooner the user can fix their program.  But on the
+				// other hand, is it worth it to spend the time debugging a jq
+				// program that's only broken on one line out of a billion?
+				return fmt.Errorf("jq: %w", err)
+			}
+			if filtered {
+				sum.Filtered++
+				if l.err != nil {
+					addError = true
+					writeRawLine = false
+					recoverable = true
+				}
+				return nil
+			}
+
+			if err := outs.Emit(&l, buf); err != nil {
+				addError = true
+				writeRawLine = true
+				return fmt.Errorf("emit: %w", err)
+			}
+			// Copying the buffer to the output writer is handled in defer.
+			if l.err != nil {
+				addError = true
+				writeRawLine = false
+				recoverable = true
+				return fmt.Errorf("parse: %w", err)
+			}
+			return nil
+		}()
 		if err != nil {
-			sum.Errors++
-			// It is questionable as to whether or not jq breaking means that we should
-			// stop processing the log entirely.  It's probably a bug that affects every
-			// line, so we return the error rather than l.pushError() to display the
-			// error and keep processing.
-			return sum, fmt.Errorf("jq: %w", err)
-		}
-		if filtered {
-			sum.Filtered++
-			continue
-		}
-
-		// Emit.
-		err = outs.Emit(w, &l)
-		if l.err != nil || err != nil {
-			sum.Errors++
-		}
-		if err != nil {
-			return sum, fmt.Errorf("emit: line %d: %w", sum.Lines, err)
+			return sum, fmt.Errorf("input line %d: %w", sum.Lines, err)
 		}
 	}
 	return sum, s.Err()
@@ -272,41 +355,20 @@ func (s *InputSchema) ReadLine(l *line) {
 	}
 }
 
-// Emit emits a formatted line to the provided io.Writer.  The provided line object may not be used
+// Emit emits a formatted line to the provided buffer.  The provided line object may not be used
 // again until reinitalized.
-func (s *OutputSchema) Emit(w io.Writer, l *line) (retErr error) {
-	defer func() {
-		if err := recover(); err != nil {
-			w.Write([]byte("\n"))
-			buf := make([]byte, 2048)
-			runtime.Stack(buf, false)
-			retErr = errors.New(fmt.Sprintf("%s\n%s", err, buf))
-		}
-	}()
-	if l.err != nil {
-		if _, err := w.Write(l.raw); err != nil {
-			return err
-		}
-		if _, err := w.Write([]byte("\n")); err != nil {
-			return err
-		}
-		s.EmitError(l.err.Error())
-		return nil
-	}
-
+func (s *OutputSchema) Emit(l *line, w *bytes.Buffer) (retErr error) {
 	// Level.
 	if err := s.Formatter.FormatLevel(&s.state, l.lvl, w); err != nil {
 		return err
 	}
-	// We don't check for an error here (and on similar writes) because no information is being
-	// lost by the whitespace failing to be written.  You'll know.
-	w.Write([]byte(" "))
+	w.WriteString(" ")
 
 	// Time.
 	if err := s.Formatter.FormatTime(&s.state, l.time, w); err != nil {
 		return err
 	}
-	w.Write([]byte(" "))
+	w.WriteString(" ")
 
 	// Message.
 	if err := s.Formatter.FormatMessage(&s.state, l.msg, w); err != nil {
@@ -319,7 +381,7 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) (retErr error) {
 	for _, k := range s.PriorityFields {
 		if v, ok := l.fields[k]; ok {
 			seenFieldsThisIteration[k] = struct{}{}
-			w.Write([]byte(" "))
+			w.WriteString(" ")
 			delete(l.fields, k)
 			if err := s.Formatter.FormatField(&s.state, k, v, w); err != nil {
 				return err
@@ -331,7 +393,7 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) (retErr error) {
 	for _, k := range s.state.seenFields {
 		if v, ok := l.fields[k]; ok {
 			seenFieldsThisIteration[k] = struct{}{}
-			w.Write([]byte(" "))
+			w.WriteString(" ")
 			delete(l.fields, k)
 			if err := s.Formatter.FormatField(&s.state, k, v, w); err != nil {
 				return err
@@ -342,7 +404,7 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) (retErr error) {
 	// Any new fields.
 	for k, v := range l.fields {
 		seenFieldsThisIteration[k] = struct{}{}
-		w.Write([]byte(" "))
+		w.WriteString(" ")
 		s.state.seenFields = append(s.state.seenFields, k)
 		delete(l.fields, k)
 		if err := s.Formatter.FormatField(&s.state, k, v, w); err != nil {
@@ -357,6 +419,6 @@ func (s *OutputSchema) Emit(w io.Writer, l *line) (retErr error) {
 	}
 
 	// Final newline is our responsibility.
-	w.Write([]byte("\n"))
+	w.WriteString("\n")
 	return nil
 }
