@@ -28,8 +28,8 @@ type output struct {
 }
 type general struct {
 	JQ           string `short:"e" description:"A jq program to run on the processed input; use this to ignore certain lines, add fields, etc."`
-	NoColor      bool   `short:"m" long:"no-color" description:"Disable the use of color." env:"JLOG_FORCE_MONOCHROME"`
-	NoMonochrome bool   `short:"c" long:"no-monochrome" description:"Force the use of color." ENV:"JLOG_FORCE_COLOR"`
+	NoColor      bool   `short:"M" long:"no-color" description:"Disable the use of color." env:"JLOG_FORCE_MONOCHROME"`
+	NoMonochrome bool   `short:"C" long:"no-monochrome" description:"Force the use of color." ENV:"JLOG_FORCE_COLOR"`
 	Profile      string `long:"profile" description:"If set, collect a CPU profile and write it to this file."`
 }
 
