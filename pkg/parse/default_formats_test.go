@@ -134,7 +134,7 @@ func TestFormatting(t *testing.T) {
 				t.Errorf("level: %v", err)
 			}
 			out.WriteString(" ")
-			if err := test.f.FormatMessage(&s, "hello\nworld", out); err != nil {
+			if err := test.f.FormatMessage(&s, "hello\nworld", false, out); err != nil {
 				t.Errorf("message: %v", err)
 			}
 			out.WriteString(" ")

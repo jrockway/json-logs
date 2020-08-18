@@ -111,7 +111,7 @@ func DefaultLevelParser(in interface{}) (Level, error) {
 		return LevelDebug, nil
 	case "info", "INFO":
 		return LevelInfo, nil
-	case "warn", "WARN":
+	case "warn", "WARN", "warning", "WARNING":
 		return LevelWarn, nil
 	case "error", "ERROR":
 		return LevelError, nil

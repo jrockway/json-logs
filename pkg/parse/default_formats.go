@@ -86,8 +86,12 @@ func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w *bytes.Buff
 	return nil
 }
 
-func (f *DefaultOutputFormatter) FormatMessage(s *State, msg string, w *bytes.Buffer) error {
-	w.WriteString(strings.Replace(msg, "\n", "↩", -1))
+func (f *DefaultOutputFormatter) FormatMessage(s *State, msg string, highlight bool, w *bytes.Buffer) error {
+	msg = strings.Replace(msg, "\n", "↩", -1)
+	if highlight {
+		msg = f.Aurora.Inverse(msg).String()
+	}
+	w.WriteString(msg)
 	return nil
 }
 

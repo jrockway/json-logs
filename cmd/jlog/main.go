@@ -11,7 +11,6 @@ import (
 	"time"
 	_ "time/tzdata"
 
-	"github.com/itchyny/gojq"
 	"github.com/jessevdk/go-flags"
 	"github.com/jrockway/json-logs/pkg/parse"
 	aurora "github.com/logrusorgru/aurora/v3"
@@ -121,18 +120,11 @@ func main() {
 	if !out.OnlySubseconds {
 		subsecondFormt = ""
 	}
-	var jq *gojq.Code
-	if p := gen.JQ; p != "" {
-		q, err := gojq.Parse(p)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "problem parsing jq program %q:\n%v\n", p, err)
-			os.Exit(1)
-		}
-		jq, err = gojq.Compile(q, gojq.WithVariables(parse.DefaultVariables))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "problem compiling jq program %q:\n%v\n", p, err)
-			os.Exit(1)
-		}
+
+	jq, err := parse.CompileJQ(gen.JQ)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "problem %v\n", err)
+		os.Exit(1)
 	}
 
 	ins := &parse.InputSchema{

@@ -64,11 +64,7 @@ func comperror(x, y error) bool {
 }
 
 func mustJQ(prog string) *gojq.Code {
-	q, err := gojq.Parse(prog)
-	if err != nil {
-		panic(err)
-	}
-	jq, err := gojq.Compile(q, gojq.WithVariables(DefaultVariables))
+	jq, err := CompileJQ(prog)
 	if err != nil {
 		panic(err)
 	}
@@ -357,16 +353,21 @@ func (f *testFormatter) FormatLevel(s *State, l Level, w *bytes.Buffer) error {
 		lvl = "D"
 	case LevelInfo:
 		lvl = "I"
+	case LevelWarn:
+		lvl = "W"
 	}
 	_, err := w.Write([]byte(fmt.Sprintf("{LVL:%s}", lvl)))
 	return err
 }
-func (f *testFormatter) FormatMessage(s *State, msg string, w *bytes.Buffer) error {
+func (f *testFormatter) FormatMessage(s *State, msg string, highlight bool, w *bytes.Buffer) error {
 	if msg == panicMessage {
 		panic("panic")
 	}
-	_, err := w.Write([]byte(fmt.Sprintf("{MSG:%s}", msg)))
-	return err
+	if highlight {
+		msg = "[" + msg + "]"
+	}
+	w.WriteString(fmt.Sprintf("{MSG:%s}", msg))
+	return nil
 }
 func (f *testFormatter) FormatField(s *State, k string, v interface{}, w *bytes.Buffer) error {
 	if str, ok := v.(string); ok {
@@ -547,7 +548,7 @@ func (w *errWriter) Write(buf []byte) (int, error) {
 	return n, err
 }
 
-var goodLine = "{\"t\":1,\"l\":\"info\",\"m\":\"hi\",\"a\":42}\n"
+var goodLine = `{"t":1,"l":"info","m":"hi","a":42}` + "\n"
 
 func TestReadLog(t *testing.T) {
 	testData := []struct {
@@ -800,6 +801,17 @@ func TestReadLog(t *testing.T) {
 			wantSummary:  Summary{Lines: 1, Errors: 1},
 			wantErrs:     nil,
 			wantFinalErr: Match("emit: error"),
+		},
+		{
+			name:         "highlighting messages",
+			r:            strings.NewReader(`{"t":1,"l":"info","m":"hi","a":42}` + "\n" + `{"t":1,"l":"warn","m":"hi","a":42}` + "\n"),
+			w:            new(bytes.Buffer),
+			is:           basicSchema,
+			jq:           mustJQ(`highlight($LVL==$WARN)`),
+			wantOutput:   "{LVL:I} {TS:1} {MSG:hi} {F:A:42}\n{LVL:W} {TS:1} {MSG:[hi]} {F:A:<same>}\n",
+			wantSummary:  Summary{Lines: 2},
+			wantErrs:     nil,
+			wantFinalErr: nil,
 		},
 	}
 	for _, test := range testData {

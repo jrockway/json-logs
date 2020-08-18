@@ -61,7 +61,7 @@ type OutputFormatter interface {
 	FormatLevel(s *State, lvl Level, w *bytes.Buffer) error
 
 	// FormatMessage is a function that formats a log message and outputs it to an io.Writer.
-	FormatMessage(s *State, msg string, w *bytes.Buffer) error
+	FormatMessage(s *State, msg string, highlight bool, w *bytes.Buffer) error
 
 	// FormatField is a function that formats a (key, value) pair and outputs it to an io.Writer.
 	FormatField(s *State, k string, v interface{}, w *bytes.Buffer) error
@@ -96,11 +96,12 @@ func (s *OutputSchema) EmitError(msg string) {
 
 // line represents one log line.
 type line struct {
-	time   time.Time
-	msg    string
-	lvl    Level
-	raw    []byte
-	fields map[string]interface{}
+	time      time.Time
+	msg       string
+	lvl       Level
+	raw       []byte
+	highlight bool
+	fields    map[string]interface{}
 }
 
 type Summary struct {
@@ -123,6 +124,25 @@ func prepareVariables(l *line) []interface{} {
 	}
 }
 
+const highlightKey = "__highlight"
+
+// CompileJQ compiles the provided jq program.
+func CompileJQ(p string) (*gojq.Code, error) {
+	if p == "" {
+		return nil, nil
+	}
+	p = "def highlight($cond): . + {__highlight: $cond};\n" + p
+	q, err := gojq.Parse(p)
+	if err != nil {
+		return nil, fmt.Errorf("parsing jq program %q: %v", p, err)
+	}
+	jq, err := gojq.Compile(q, gojq.WithVariables(DefaultVariables))
+	if err != nil {
+		return nil, fmt.Errorf("compiling jq program %q: %v", p, err)
+	}
+	return jq, nil
+}
+
 // runJQ runs the provided jq program on the provided line.  It returns true if the result is empty
 // (i.e., the line should be filtered out), and an error if the output type is invalid or another
 // error occurred.
@@ -135,6 +155,12 @@ func runJQ(jq *gojq.Code, l *line) (bool, error) {
 	if result, ok := iter.Next(); ok {
 		switch x := result.(type) {
 		case map[string]interface{}:
+			if raw, ok := x[highlightKey]; ok {
+				delete(x, highlightKey)
+				if hi, ok := raw.(bool); ok {
+					l.highlight = hi
+				}
+			}
 			l.fields = x
 		case nil:
 			return false, errors.New("unexpected nil result; yield an empty map ('{}') to delete all fields")
@@ -235,6 +261,7 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 			l.fields = make(map[string]interface{})
 			l.lvl = LevelUnknown
 			l.time = time.Time{}
+			l.highlight = false
 
 			// Parse input.
 			parseErr := ins.ReadLine(&l)
@@ -424,7 +451,7 @@ func (s *OutputSchema) Emit(l *line, w *bytes.Buffer) (retErr error) {
 	w.WriteString(" ")
 
 	// Message.
-	if err := s.Formatter.FormatMessage(&s.state, l.msg, w); err != nil {
+	if err := s.Formatter.FormatMessage(&s.state, l.msg, l.highlight, w); err != nil {
 		return err
 	}
 
