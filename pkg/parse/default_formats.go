@@ -12,14 +12,16 @@ import (
 )
 
 type DefaultOutputFormatter struct {
-	// Controls the use of color.
-	Aurora aurora.Aurora
+	Aurora aurora.Aurora // Controls the use of color.
+
 	// If true, print ↑ for fields that have an identical value as the previous line.
 	ElideDuplicateFields bool
+
 	// The time.Format string to show times in, like time.RFC3339.  If empty, show relative
 	// times since the time the program started.  (A minus sign indicates the past; positive
 	// values are in the future, good for when you are following a log file.)
 	AbsoluteTimeFormat string
+
 	// If non-empty, print only the fractional seconds for log lines that occurred on the same
 	// second as the previous line.  For example, if SecondsOnlyFormat is set to ".000":
 	//
@@ -31,8 +33,9 @@ type DefaultOutputFormatter struct {
 	// Decimals are only aligned by careful selection of AbsoluteTimeFormat and
 	// SecondsOnlyFormat strings.  The algorithm does nothing smart.
 	SubSecondsOnlyFormat string
-	// Zone is the time zone to display the output in.
-	Zone *time.Location
+
+	Zone            *time.Location      // Zone is the time zone to display the output in.
+	HighlightFields map[string]struct{} // HighlightFields visually distinguishes the named fields.
 }
 
 var (
@@ -122,7 +125,17 @@ func (f *DefaultOutputFormatter) FormatLevel(s *State, level Level, w *bytes.Buf
 }
 
 func (f *DefaultOutputFormatter) FormatField(s *State, k string, v interface{}, w *bytes.Buffer) error {
-	w.Write([]byte(f.Aurora.Gray(16, k+":").String()))
+	var highlight bool
+	if f.HighlightFields != nil {
+		_, highlight = f.HighlightFields[k]
+	}
+
+	if highlight {
+		w.WriteString(f.Aurora.Yellow(k).String())
+	} else {
+		w.WriteString(f.Aurora.Gray(16, k).String())
+	}
+	w.WriteString(f.Aurora.Gray(16, ":").String())
 
 	var value []byte
 	switch x := v.(type) {

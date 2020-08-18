@@ -25,7 +25,9 @@ type output struct {
 	OnlySubseconds     bool     `short:"s" long:"only-subseconds" description:"Display only the fractional part of times that are in the same second as the last log line.  Only works with the (milli|micro|nano) formats above.  (This can be revisited, but it's complicated.)" env:"JLOG_ONLY_SUBSECONDS"`
 	NoSummary          bool     `long:"no-summary" description:"Suppress printing the summary at the end." env:"JLOG_NO_SUMMARY"`
 	PriorityFields     []string `long:"priority" short:"p" description:"A list of fields to show first; repeatable." env:"JLOG_PRIORITY_FIELDS" env-delim:","`
+	HighlightFields    []string `long:"highlight" short:"H" description:"A list of fields to visually distinguish; repeatable." env:"JLOG_HIGHLIGHT_FIELDS" env-delim:"," default:"err" default:"error" default:"warn" default:"warning"`
 }
+
 type general struct {
 	JQ           string `short:"e" description:"A jq program to run on the processed input; use this to ignore certain lines, add fields, etc."`
 	NoColor      bool   `short:"M" long:"no-color" description:"Disable the use of color." env:"JLOG_FORCE_MONOCHROME"`
@@ -57,7 +59,7 @@ func main() {
 
 	if _, err := fp.Parse(); err != nil {
 		if ferr, ok := err.(*flags.Error); ok && ferr.Type == flags.ErrHelp {
-			fmt.Fprintf(os.Stderr, "jlog - Search and pretty-print your JSON logs.\nMore info: https://github.com/jrockway/json-logs\n")
+			fmt.Fprintf(os.Stderr, "jlog - Search and pretty-print your JSON logs.\n\nMore info: https://github.com/jrockway/json-logs\n")
 			fmt.Fprintf(os.Stderr, ferr.Message)
 			os.Exit(2)
 		}
@@ -152,14 +154,20 @@ func main() {
 		wantColor = true
 	}
 
+	defaultOutput := &parse.DefaultOutputFormatter{
+		Aurora:               aurora.NewAurora(wantColor),
+		ElideDuplicateFields: !out.NoElideDuplicates,
+		AbsoluteTimeFormat:   out.TimeFormat,
+		SubSecondsOnlyFormat: subsecondFormt,
+		Zone:                 time.Local,
+		HighlightFields:      make(map[string]struct{}),
+	}
+	for _, k := range out.HighlightFields {
+		defaultOutput.HighlightFields[k] = struct{}{}
+	}
+
 	outs := &parse.OutputSchema{
-		Formatter: &parse.DefaultOutputFormatter{
-			Aurora:               aurora.NewAurora(wantColor),
-			ElideDuplicateFields: !out.NoElideDuplicates,
-			AbsoluteTimeFormat:   out.TimeFormat,
-			SubSecondsOnlyFormat: subsecondFormt,
-			Zone:                 time.Local,
-		},
+		Formatter:      defaultOutput,
 		PriorityFields: out.PriorityFields,
 	}
 

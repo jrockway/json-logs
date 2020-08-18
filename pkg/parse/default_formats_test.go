@@ -32,6 +32,17 @@ func TestFormatting(t *testing.T) {
 		{
 			f: &DefaultOutputFormatter{
 				Aurora:               aurora.NewAurora(false),
+				ElideDuplicateFields: false,
+				AbsoluteTimeFormat:   time.RFC3339,
+				Zone:                 time.UTC,
+				HighlightFields:      map[string]struct{}{"a": {}},
+			},
+			t:    []time.Time{defaultTime},
+			want: `2000-01-02T03:04:05Z INFO  hello↩world a:field b:{"nesting":"is real"}` + "\n",
+		},
+		{
+			f: &DefaultOutputFormatter{
+				Aurora:               aurora.NewAurora(false),
 				ElideDuplicateFields: true,
 				AbsoluteTimeFormat:   time.RFC3339,
 				Zone:                 time.UTC,
@@ -154,6 +165,20 @@ func TestFormatting(t *testing.T) {
 
 	if err := (&DefaultOutputFormatter{Aurora: aurora.NewAurora(true)}).FormatField(new(State), "fun", func() {}, new(bytes.Buffer)); err == nil {
 		t.Error("formatting a function should fail, but didn't")
+	}
+
+	var a, b = new(bytes.Buffer), new(bytes.Buffer)
+	f := &DefaultOutputFormatter{Aurora: aurora.NewAurora(false)}
+	f.FormatMessage(nil, "test", false, a)
+	f.FormatMessage(nil, "test", true, b)
+	if got, want := a.String(), b.String(); got != want {
+		t.Errorf("message should be the same when uncolored aurora is in use:\n  got: %v\n want: %v", got, want)
+	}
+	f = &DefaultOutputFormatter{Aurora: aurora.NewAurora(true)}
+	f.FormatMessage(nil, "test", false, a)
+	f.FormatMessage(nil, "test", true, b)
+	if got, want := a.String(), b.String(); got == want {
+		t.Errorf("message should be different when colored aurora is in use:\n  got: %v\n want: %v", got, want)
 	}
 }
 
