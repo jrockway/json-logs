@@ -232,6 +232,78 @@ func TestRead(t *testing.T) {
 			},
 			err: Match("invalid float64\\(42\\) for log level"),
 		},
+		{
+			name:  "auto-guess zap",
+			s:     &InputSchema{Strict: true},
+			input: `{"ts":1,"msg":"hi","level":"info","extra":"is here"}`,
+			want: &line{
+				time:   time.Unix(1, 0),
+				lvl:    LevelInfo,
+				msg:    `hi`,
+				fields: map[string]interface{}{"extra": "is here"},
+			},
+			err: nil,
+		},
+		{
+			name:  "auto-guess zap (lax)",
+			s:     &InputSchema{Strict: false},
+			input: `{"ts":1,"msg":"hi","level":"info","extra":"is here"}`,
+			want: &line{
+				time:   time.Unix(1, 0),
+				lvl:    LevelInfo,
+				msg:    `hi`,
+				fields: map[string]interface{}{"extra": "is here"},
+			},
+			err: nil,
+		},
+		{
+			name:  "auto-guess stackdriver",
+			s:     &InputSchema{Strict: true},
+			input: `{"timestamp":{"seconds":1,"nanos":1},"message":"hi","severity":"info","extra":"is here"}`,
+			want: &line{
+				time:   time.Unix(1, 1),
+				lvl:    LevelInfo,
+				msg:    `hi`,
+				fields: map[string]interface{}{"extra": "is here"},
+			},
+			err: nil,
+		},
+		{
+			name:  "auto-guess logrus",
+			s:     &InputSchema{Strict: true},
+			input: `{"time":"1970-01-01T00:00:01.001Z","msg":"hi","level":"info","extra":"is here"}`,
+			want: &line{
+				time:   time.Unix(1, 1e6),
+				lvl:    LevelInfo,
+				msg:    `hi`,
+				fields: map[string]interface{}{"extra": "is here"},
+			},
+			err: nil,
+		},
+		{
+			name:  "auto-guess lager (pretty)",
+			s:     &InputSchema{Strict: true},
+			input: `{"timestamp":"1970-01-01T00:00:01.001Z","message":"hi","level":"info","source":"test","data":{"extra":"is here"}}`,
+			want: &line{
+				time:   time.Unix(1, 1e6),
+				lvl:    LevelInfo,
+				msg:    `hi`,
+				fields: map[string]interface{}{"source": "test", "data": map[string]interface{}{"extra": "is here"}},
+			},
+			err: nil,
+		},
+		{
+			name:  "auto-guess lager",
+			s:     &InputSchema{Strict: true},
+			input: `{"timestamp":1.1,"message":"hi","log_level":1,"source":"test","data":{"extra":"is here"}}`,
+			want: &line{
+				time:   time.Unix(1, 1e8),
+				lvl:    LevelInfo,
+				msg:    `hi`,
+				fields: map[string]interface{}{"source": "test", "data": map[string]interface{}{"extra": "is here"}},
+			},
+			err: nil,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

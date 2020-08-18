@@ -305,7 +305,7 @@ func (s *InputSchema) guessSchema(l *line) {
 	if has("ts") && has("level") && has("msg") {
 		// zap's default production encoder
 		s.TimeKey = "ts"
-		s.TimeFormat = DefaultTimeParser
+		s.TimeFormat = StrictUnixTimeParser
 		s.LevelKey = "level"
 		s.LevelFormat = DefaultLevelParser
 		s.MessageKey = "msg"
@@ -327,6 +327,24 @@ func (s *InputSchema) guessSchema(l *line) {
 		s.LevelKey = "level"
 		s.LevelFormat = DefaultLevelParser
 		s.MessageKey = "msg"
+		return
+	}
+	if len(l.fields) == 5 && has("timestamp") && has("level") && has("message") && has("data") && has("source") {
+		// lager "pretty"
+		s.TimeKey = "timestamp"
+		s.TimeFormat = DefaultTimeParser
+		s.LevelKey = "level"
+		s.LevelFormat = DefaultLevelParser
+		s.MessageKey = "message"
+		return
+	}
+	if len(l.fields) == 5 && has("timestamp") && has("log_level") && has("message") && has("data") && has("source") {
+		// lager non-pretty
+		s.TimeKey = "timestamp"
+		s.TimeFormat = StrictUnixTimeParser
+		s.LevelKey = "log_level"
+		s.LevelFormat = LagerLevelParser
+		s.MessageKey = "message"
 		return
 	}
 }

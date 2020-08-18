@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"code.cloudfoundry.org/lager"
 	"github.com/google/go-cmp/cmp"
 	joonix "github.com/joonix/log"
 	"github.com/jrockway/json-logs/pkg/parse"
@@ -32,6 +33,7 @@ func TestLoggers(t *testing.T) {
 	exampleError := errors.New("whoa!")
 	testData := []struct {
 		name string
+		skip string
 		ins  *parse.InputSchema
 		f    func(buf *bytes.Buffer)
 	}{
@@ -42,7 +44,7 @@ func TestLoggers(t *testing.T) {
 				MessageKey:  "msg",
 				TimeKey:     "ts",
 				LevelFormat: parse.DefaultLevelParser,
-				TimeFormat:  parse.DefaultTimeParser,
+				TimeFormat:  parse.StrictUnixTimeParser,
 				Strict:      true,
 			},
 			f: func(buf *bytes.Buffer) {
@@ -96,7 +98,46 @@ func TestLoggers(t *testing.T) {
 				l.WithError(exampleError).Info("line 3")
 			},
 		},
+		{
+			name: "lager/pretty",
+			skip: "we can't handle the extra 'test.' appended to each message",
+			ins: &parse.InputSchema{
+				LevelKey:    "level",
+				MessageKey:  "message",
+				TimeKey:     "timestamp",
+				LevelFormat: parse.DefaultLevelParser,
+				TimeFormat:  parse.DefaultTimeParser,
+				Strict:      true,
+			},
+			f: func(buf *bytes.Buffer) {
+				l := lager.NewLogger("test")
+				l.RegisterSink(lager.NewPrettySink(buf, lager.DEBUG))
+				l.Info("line 1")
+				l.Info("line 2", lager.Data{"int": 42, "object": exampleObject})
+				l.Error("line 3", exampleError)
+			},
+		},
+		{
+			name: "lager",
+			skip: "we can't handle the extra 'test.' appended to each message",
+			ins: &parse.InputSchema{
+				LevelKey:    "log_level",
+				MessageKey:  "message",
+				TimeKey:     "timestamp",
+				LevelFormat: parse.LagerLevelParser,
+				TimeFormat:  parse.StrictUnixTimeParser,
+				Strict:      true,
+			},
+			f: func(buf *bytes.Buffer) {
+				l := lager.NewLogger("test")
+				l.RegisterSink(lager.NewWriterSink(buf, lager.DEBUG))
+				l.Info("line 1")
+				l.Info("line 2", lager.Data{"int": 42, "object": exampleObject})
+				l.Error("line 3", exampleError)
+			},
+		},
 	}
+
 	f := &ignoreTimeFormatter{
 		DefaultOutputFormatter: &parse.DefaultOutputFormatter{
 			Aurora:               aurora.NewAurora(false),
@@ -114,18 +155,29 @@ INFO  2 line 2 string:value int:42 object:{"foo":"bar"}
 INFO  3 line 3 error:whoa!
 `[1:]
 	for _, test := range testData {
-		for name, ins := range map[string]*parse.InputSchema{test.name: test.ins, test.name + "_guess": new(parse.InputSchema)} {
+		subTests := map[string]*parse.InputSchema{
+			test.name:            test.ins,
+			test.name + "_guess": {Strict: true},
+		}
+		for name, ins := range subTests {
 			t.Run(name, func(t *testing.T) {
 				f.i = 0
 				outs.EmitErrorFn = func(msg string) { t.Fatalf("EmitErrorFn: %s", msg) }
 				input := new(bytes.Buffer)
 				output := new(bytes.Buffer)
 				test.f(input)
+				inputCopy := *input
 				if _, err := parse.ReadLog(input, output, ins, outs, nil); err != nil {
 					t.Fatalf("readlog: %v", err)
 				}
+				if test.skip != "" {
+					t.Logf("skipped test:\noutput:\n%s", output.String())
+					t.Logf("skipped test:\ninput:\n---\n%s\n---\n", inputCopy.String())
+					t.Skip(test.skip)
+				}
 				if diff := cmp.Diff(output.String(), want); diff != "" {
 					t.Errorf("output:\n%s", diff)
+					t.Logf("input:\n---\n%s\n---\n", inputCopy.String())
 				}
 			})
 		}

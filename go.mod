@@ -3,6 +3,7 @@ module github.com/jrockway/json-logs
 go 1.15
 
 require (
+	code.cloudfoundry.org/lager v2.0.0+incompatible
 	github.com/google/go-cmp v0.5.1
 	github.com/itchyny/gojq v0.11.0
 	github.com/jessevdk/go-flags v1.4.0
