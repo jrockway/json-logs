@@ -135,12 +135,18 @@ func main() {
 	}
 
 	ins := &parse.InputSchema{
-		LevelKey:    in.LevelKey,
-		MessageKey:  in.MessageKey,
-		TimeKey:     in.TimestampKey,
-		TimeFormat:  parse.DefaultTimeParser,
-		LevelFormat: parse.DefaultLevelParser,
-		Strict:      !in.Lax,
+		Strict: !in.Lax,
+	}
+	if k := in.LevelKey; k != "" {
+		ins.LevelKey = k
+		ins.LevelFormat = parse.DefaultLevelParser
+	}
+	if k := in.MessageKey; k != "" {
+		ins.MessageKey = k
+	}
+	if k := in.TimestampKey; k != "" {
+		ins.TimeKey = k
+		ins.TimeFormat = parse.DefaultTimeParser
 	}
 
 	var wantColor = isatty.IsTerminal(os.Stdout.Fd())
