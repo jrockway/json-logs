@@ -20,11 +20,12 @@ import (
 )
 
 type output struct {
-	NoElideDuplicates  bool   `long:"no-elide" description:"Disable eliding repeated fields.  By default, fields that have the same value as the line above them have their values replaced with '↑'." env:"JLOG_NO_ELIDE_DUPLICATES"`
-	RelativeTimestamps bool   `short:"r" long:"relative" description:"Print timestamps as a duration since the program started instead of absolute timestamps." env:"JLOG_RELATIVE_TIMESTAMPS"`
-	TimeFormat         string `short:"t" long:"time-format" description:"A go time.Format string describing how to format timestamps, or one of 'rfc3339(milli|micro|nano)', 'unix', 'stamp(milli|micro|nano)', or 'kitchen'." default:"stamp" env:"JLOG_TIME_FORMAT"`
-	OnlySubseconds     bool   `short:"s" long:"only-subseconds" description:"Display only the fractional part of times that are in the same second as the last log line.  Only works with the (milli|micro|nano) formats above.  (This can be revisited, but it's complicated.)" env:"JLOG_ONLY_SUBSECONDS"`
-	NoSummary          bool   `long:"no-summary" description:"Suppress printing the summary at the end." env:"JLOG_NO_SUMMARY"`
+	NoElideDuplicates  bool     `long:"no-elide" description:"Disable eliding repeated fields.  By default, fields that have the same value as the line above them have their values replaced with '↑'." env:"JLOG_NO_ELIDE_DUPLICATES"`
+	RelativeTimestamps bool     `short:"r" long:"relative" description:"Print timestamps as a duration since the program started instead of absolute timestamps." env:"JLOG_RELATIVE_TIMESTAMPS"`
+	TimeFormat         string   `short:"t" long:"time-format" description:"A go time.Format string describing how to format timestamps, or one of 'rfc3339(milli|micro|nano)', 'unix', 'stamp(milli|micro|nano)', or 'kitchen'." default:"stamp" env:"JLOG_TIME_FORMAT"`
+	OnlySubseconds     bool     `short:"s" long:"only-subseconds" description:"Display only the fractional part of times that are in the same second as the last log line.  Only works with the (milli|micro|nano) formats above.  (This can be revisited, but it's complicated.)" env:"JLOG_ONLY_SUBSECONDS"`
+	NoSummary          bool     `long:"no-summary" description:"Suppress printing the summary at the end." env:"JLOG_NO_SUMMARY"`
+	PriorityFields     []string `long:"priority" short:"p" description:"A list of fields to show first; repeatable." env:"JLOG_PRIORITY_FIELDS" env-delim:","`
 }
 type general struct {
 	JQ           string `short:"e" description:"A jq program to run on the processed input; use this to ignore certain lines, add fields, etc."`
@@ -167,6 +168,7 @@ func main() {
 			SubSecondsOnlyFormat: subsecondFormt,
 			Zone:                 time.Local,
 		},
+		PriorityFields: out.PriorityFields,
 	}
 
 	sigCh := make(chan os.Signal)
