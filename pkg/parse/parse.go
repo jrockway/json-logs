@@ -293,6 +293,44 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 	return sum, s.Err()
 }
 
+// guessSchema tries to guess the schema if one has not been explicitly configured.
+func (s *InputSchema) guessSchema(l *line) {
+	if s.TimeKey != "" || s.LevelKey != "" || s.MessageKey != "" {
+		return
+	}
+	has := func(key string) bool {
+		_, ok := l.fields[key]
+		return ok
+	}
+	if has("ts") && has("level") && has("msg") {
+		// zap's default production encoder
+		s.TimeKey = "ts"
+		s.TimeFormat = DefaultTimeParser
+		s.LevelKey = "level"
+		s.LevelFormat = DefaultLevelParser
+		s.MessageKey = "msg"
+		return
+	}
+	if has("timestamp") && has("severity") && has("message") {
+		// stackdriver
+		s.TimeKey = "timestamp"
+		s.TimeFormat = DefaultTimeParser
+		s.LevelKey = "severity"
+		s.LevelFormat = DefaultLevelParser
+		s.MessageKey = "message"
+		return
+	}
+	if has("time") && has("level") && has("msg") {
+		// logrus default json encoder
+		s.TimeKey = "time"
+		s.TimeFormat = DefaultTimeParser
+		s.LevelKey = "level"
+		s.LevelFormat = DefaultLevelParser
+		s.MessageKey = "msg"
+		return
+	}
+}
+
 // ReadLine parses a log line into the provided line object.
 func (s *InputSchema) ReadLine(l *line) error {
 	var retErr error
@@ -315,6 +353,7 @@ func (s *InputSchema) ReadLine(l *line) error {
 			l.msg = string(l.raw)
 		}
 	}
+	s.guessSchema(l)
 	if t, ok := l.fields[s.TimeKey]; s.TimeFormat != nil && ok {
 		time, err := s.TimeFormat(t)
 		if err != nil {

@@ -112,20 +112,22 @@ func TestLoggers(t *testing.T) {
 INFO  1 line 1
 INFO  2 line 2 string:value int:42 object:{"foo":"bar"}
 INFO  3 line 3 error:whoa!
-`
+`[1:]
 	for _, test := range testData {
-		t.Run(test.name, func(t *testing.T) {
-			f.i = 0
-			outs.EmitErrorFn = func(msg string) { t.Fatalf("emit error fn: %s", msg) }
-			input := new(bytes.Buffer)
-			output := new(bytes.Buffer)
-			test.f(input)
-			if _, err := parse.ReadLog(input, output, test.ins, outs, nil); err != nil {
-				t.Fatalf("readlog: %v", err)
-			}
-			if diff := cmp.Diff(output.String(), want[1:]); diff != "" {
-				t.Errorf("output:\n%s", diff)
-			}
-		})
+		for name, ins := range map[string]*parse.InputSchema{test.name: test.ins, test.name + "_guess": new(parse.InputSchema)} {
+			t.Run(name, func(t *testing.T) {
+				f.i = 0
+				outs.EmitErrorFn = func(msg string) { t.Fatalf("EmitErrorFn: %s", msg) }
+				input := new(bytes.Buffer)
+				output := new(bytes.Buffer)
+				test.f(input)
+				if _, err := parse.ReadLog(input, output, ins, outs, nil); err != nil {
+					t.Fatalf("readlog: %v", err)
+				}
+				if diff := cmp.Diff(output.String(), want); diff != "" {
+					t.Errorf("output:\n%s", diff)
+				}
+			})
+		}
 	}
 }
