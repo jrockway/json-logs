@@ -22,10 +22,9 @@ type ignoreTimeFormatter struct {
 	i int
 }
 
-func (f *ignoreTimeFormatter) FormatTime(s *parse.State, t time.Time, w *bytes.Buffer) error {
+func (f *ignoreTimeFormatter) FormatTime(s *parse.State, t time.Time, w *bytes.Buffer) {
 	f.i++
 	w.WriteString(strconv.Itoa(f.i))
-	return nil
 }
 
 func TestLoggers(t *testing.T) {

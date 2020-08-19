@@ -2,6 +2,7 @@ package parse
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -137,25 +138,15 @@ func TestFormatting(t *testing.T) {
 		s.timePadding = 10
 		out := new(bytes.Buffer)
 		for _, ts := range test.t {
-			if err := test.f.FormatTime(&s, ts, out); err != nil {
-				t.Errorf("time: %v", err)
-			}
+			test.f.FormatTime(&s, ts, out)
 			out.WriteString(" ")
-			if err := test.f.FormatLevel(&s, LevelInfo, out); err != nil {
-				t.Errorf("level: %v", err)
-			}
+			test.f.FormatLevel(&s, LevelInfo, out)
 			out.WriteString(" ")
-			if err := test.f.FormatMessage(&s, "hello\nworld", false, out); err != nil {
-				t.Errorf("message: %v", err)
-			}
+			test.f.FormatMessage(&s, "hello\nworld", false, out)
 			out.WriteString(" ")
-			if err := test.f.FormatField(&s, "a", "field", out); err != nil {
-				t.Errorf("a field: %v", err)
-			}
+			test.f.FormatField(&s, "a", "field", out)
 			out.WriteString(" ")
-			if err := test.f.FormatField(&s, "b", map[string]interface{}{"nesting": "is real"}, out); err != nil {
-				t.Errorf("b field: %v", err)
-			}
+			test.f.FormatField(&s, "b", map[string]interface{}{"nesting": "is real"}, out)
 			out.WriteString("\n")
 		}
 		if diff := cmp.Diff(out.String(), test.want); diff != "" {
@@ -163,10 +154,21 @@ func TestFormatting(t *testing.T) {
 		}
 	}
 
-	if err := (&DefaultOutputFormatter{Aurora: aurora.NewAurora(true)}).FormatField(new(State), "fun", func() {}, new(bytes.Buffer)); err == nil {
-		t.Error("formatting a function should fail, but didn't")
+	// Test a panicing formatter.
+	err := func() (err error) {
+		defer func() {
+			if x := recover(); x != nil {
+				err = fmt.Errorf("recover: %v", x)
+			}
+		}()
+		(&DefaultOutputFormatter{Aurora: aurora.NewAurora(true)}).FormatField(new(State), "fun", func() {}, new(bytes.Buffer))
+		return
+	}()
+	if err == nil {
+		t.Fatal("formatting a function should have caused a panic, but didn't")
 	}
 
+	// Test that that highlighting does something.
 	var a, b = new(bytes.Buffer), new(bytes.Buffer)
 	f := &DefaultOutputFormatter{Aurora: aurora.NewAurora(false)}
 	f.FormatMessage(nil, "test", false, a)

@@ -55,16 +55,16 @@ type InputSchema struct {
 // write errors or short writes.
 type OutputFormatter interface {
 	// FormatTime is a function that formats a time.Time and outputs it to an io.Writer.
-	FormatTime(s *State, t time.Time, w *bytes.Buffer) error
+	FormatTime(s *State, t time.Time, w *bytes.Buffer)
 
 	// FormatLevel is a function that formats a log level and outputs it to an io.Writer.
-	FormatLevel(s *State, lvl Level, w *bytes.Buffer) error
+	FormatLevel(s *State, lvl Level, w *bytes.Buffer)
 
 	// FormatMessage is a function that formats a log message and outputs it to an io.Writer.
-	FormatMessage(s *State, msg string, highlight bool, w *bytes.Buffer) error
+	FormatMessage(s *State, msg string, highlight bool, w *bytes.Buffer)
 
 	// FormatField is a function that formats a (key, value) pair and outputs it to an io.Writer.
-	FormatField(s *State, k string, v interface{}, w *bytes.Buffer) error
+	FormatField(s *State, k string, v interface{}, w *bytes.Buffer)
 }
 
 // State keeps state between log lines.
@@ -250,7 +250,7 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 					recoverable = false
 					stack := make([]byte, 2048)
 					runtime.Stack(stack, false)
-					retErr = errors.New(fmt.Sprintf("%s\n%s", err, stack))
+					retErr = fmt.Errorf("%s\n%s", err, stack)
 				}
 			}()
 
@@ -299,11 +299,9 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 				return nil
 			}
 
-			if err := outs.Emit(&l, buf); err != nil {
-				addError = true
-				writeRawLine = true
-				return fmt.Errorf("emit: %w", err)
-			}
+			// Emit a line to the buffer.
+			outs.Emit(&l, buf)
+
 			// Copying the buffer to the output writer is handled in defer.
 			if parseErr != nil {
 				addError = true
@@ -437,23 +435,17 @@ func (s *InputSchema) ReadLine(l *line) error {
 
 // Emit emits a formatted line to the provided buffer.  The provided line object may not be used
 // again until reinitalized.
-func (s *OutputSchema) Emit(l *line, w *bytes.Buffer) (retErr error) {
+func (s *OutputSchema) Emit(l *line, w *bytes.Buffer) {
 	// Level.
-	if err := s.Formatter.FormatLevel(&s.state, l.lvl, w); err != nil {
-		return err
-	}
+	s.Formatter.FormatLevel(&s.state, l.lvl, w)
 	w.WriteString(" ")
 
 	// Time.
-	if err := s.Formatter.FormatTime(&s.state, l.time, w); err != nil {
-		return err
-	}
+	s.Formatter.FormatTime(&s.state, l.time, w)
 	w.WriteString(" ")
 
 	// Message.
-	if err := s.Formatter.FormatMessage(&s.state, l.msg, l.highlight, w); err != nil {
-		return err
-	}
+	s.Formatter.FormatMessage(&s.state, l.msg, l.highlight, w)
 
 	seenFieldsThisIteration := make(map[string]struct{})
 
@@ -463,9 +455,7 @@ func (s *OutputSchema) Emit(l *line, w *bytes.Buffer) (retErr error) {
 			seenFieldsThisIteration[k] = struct{}{}
 			w.WriteString(" ")
 			delete(l.fields, k)
-			if err := s.Formatter.FormatField(&s.state, k, v, w); err != nil {
-				return err
-			}
+			s.Formatter.FormatField(&s.state, k, v, w)
 		}
 	}
 
@@ -475,9 +465,7 @@ func (s *OutputSchema) Emit(l *line, w *bytes.Buffer) (retErr error) {
 			seenFieldsThisIteration[k] = struct{}{}
 			w.WriteString(" ")
 			delete(l.fields, k)
-			if err := s.Formatter.FormatField(&s.state, k, v, w); err != nil {
-				return err
-			}
+			s.Formatter.FormatField(&s.state, k, v, w)
 		}
 	}
 
@@ -487,9 +475,7 @@ func (s *OutputSchema) Emit(l *line, w *bytes.Buffer) (retErr error) {
 		w.WriteString(" ")
 		s.state.seenFields = append(s.state.seenFields, k)
 		delete(l.fields, k)
-		if err := s.Formatter.FormatField(&s.state, k, v, w); err != nil {
-			return err
-		}
+		s.Formatter.FormatField(&s.state, k, v, w)
 	}
 
 	for k := range s.state.lastFields {
@@ -500,5 +486,4 @@ func (s *OutputSchema) Emit(l *line, w *bytes.Buffer) (retErr error) {
 
 	// Final newline is our responsibility.
 	w.WriteString("\n")
-	return nil
 }

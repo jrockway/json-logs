@@ -42,7 +42,7 @@ var (
 	programStartTime = time.Now()
 )
 
-func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w *bytes.Buffer) error {
+func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w *bytes.Buffer) {
 	var out string
 	switch {
 	case t.IsZero():
@@ -84,21 +84,19 @@ func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w *bytes.Buff
 	if l := utf8.RuneCountInString(out); l > s.timePadding {
 		s.timePadding = l
 	}
-	w.Write([]byte(f.Aurora.Green(out).String()))
+	w.WriteString(f.Aurora.Green(out).String())
 	s.lastTime = t
-	return nil
 }
 
-func (f *DefaultOutputFormatter) FormatMessage(s *State, msg string, highlight bool, w *bytes.Buffer) error {
+func (f *DefaultOutputFormatter) FormatMessage(s *State, msg string, highlight bool, w *bytes.Buffer) {
 	msg = strings.Replace(msg, "\n", "↩", -1)
 	if highlight {
 		msg = f.Aurora.Inverse(msg).String()
 	}
 	w.WriteString(msg)
-	return nil
 }
 
-func (f *DefaultOutputFormatter) FormatLevel(s *State, level Level, w *bytes.Buffer) error {
+func (f *DefaultOutputFormatter) FormatLevel(s *State, level Level, w *bytes.Buffer) {
 	var l aurora.Value
 	switch level {
 	case LevelTrace:
@@ -120,11 +118,10 @@ func (f *DefaultOutputFormatter) FormatLevel(s *State, level Level, w *bytes.Buf
 	default:
 		l = f.Aurora.Gray(15, "UNK  ")
 	}
-	w.Write([]byte(l.String()))
-	return nil
+	w.WriteString(l.String())
 }
 
-func (f *DefaultOutputFormatter) FormatField(s *State, k string, v interface{}, w *bytes.Buffer) error {
+func (f *DefaultOutputFormatter) FormatField(s *State, k string, v interface{}, w *bytes.Buffer) {
 	var highlight bool
 	if f.HighlightFields != nil {
 		_, highlight = f.HighlightFields[k]
@@ -145,7 +142,7 @@ func (f *DefaultOutputFormatter) FormatField(s *State, k string, v interface{}, 
 		var err error
 		value, err = json.Marshal(v)
 		if err != nil {
-			return fmt.Errorf("marshal value: %w", err)
+			panic(fmt.Sprintf("marshal value: %v", err))
 		}
 	}
 
@@ -159,5 +156,4 @@ func (f *DefaultOutputFormatter) FormatField(s *State, k string, v interface{}, 
 	}
 
 	w.Write(value)
-	return nil
 }

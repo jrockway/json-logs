@@ -318,32 +318,25 @@ func TestRead(t *testing.T) {
 	}
 }
 
-type testFormatter struct {
-	errors []error
-}
+type testFormatter struct{}
 
 var (
 	panicTime       = time.Unix(666, 0)
 	panicMessage    = "panic"
 	panicFieldValue = "panic"
-	errorMessage    = "eRrRoR"
-	errorFieldValue = "error"
 )
 
-func (f *testFormatter) FormatTime(s *State, t time.Time, w *bytes.Buffer) error {
+func (f *testFormatter) FormatTime(s *State, t time.Time, w *bytes.Buffer) {
 	switch t {
-	case time.Time{}:
-		_, err := w.Write([]byte(fmt.Sprintf("{TS:∅}")))
-		return err
 	case panicTime:
 		panic("panic")
+	case time.Time{}:
+		w.WriteString("{TS:∅}")
 	default:
-		_, err := w.Write([]byte(fmt.Sprintf("{TS:%d}", t.Unix())))
-		return err
+		fmt.Fprintf(w, "{TS:%d}", t.Unix())
 	}
-	return nil
 }
-func (f *testFormatter) FormatLevel(s *State, l Level, w *bytes.Buffer) error {
+func (f *testFormatter) FormatLevel(s *State, l Level, w *bytes.Buffer) {
 	if l == LevelPanic {
 		panic("panic")
 	}
@@ -356,31 +349,25 @@ func (f *testFormatter) FormatLevel(s *State, l Level, w *bytes.Buffer) error {
 	case LevelWarn:
 		lvl = "W"
 	}
-	_, err := w.Write([]byte(fmt.Sprintf("{LVL:%s}", lvl)))
-	return err
+	fmt.Fprintf(w, "{LVL:%s}", lvl)
 }
-func (f *testFormatter) FormatMessage(s *State, msg string, highlight bool, w *bytes.Buffer) error {
+func (f *testFormatter) FormatMessage(s *State, msg string, highlight bool, w *bytes.Buffer) {
 	if msg == panicMessage {
 		panic("panic")
 	}
 	if highlight {
 		msg = "[" + msg + "]"
 	}
-	w.WriteString(fmt.Sprintf("{MSG:%s}", msg))
-	return nil
+	fmt.Fprintf(w, "{MSG:%s}", msg)
 }
-func (f *testFormatter) FormatField(s *State, k string, v interface{}, w *bytes.Buffer) error {
+func (f *testFormatter) FormatField(s *State, k string, v interface{}, w *bytes.Buffer) {
 	if str, ok := v.(string); ok {
 		switch str {
 		case panicFieldValue:
 			panic("panic")
-		case errorFieldValue:
-			return errors.New("error")
 		}
 	}
-
 	value := []byte(fmt.Sprintf("%v", v))
-
 	if s.lastFields != nil {
 		old, ok := s.lastFields[k]
 		if ok && bytes.Equal(old, value) {
@@ -389,9 +376,7 @@ func (f *testFormatter) FormatField(s *State, k string, v interface{}, w *bytes.
 			s.lastFields[k] = value
 		}
 	}
-
-	_, err := w.Write([]byte(fmt.Sprintf("{F:%s:%s}", strings.ToUpper(k), value)))
-	return err
+	fmt.Fprintf(w, "{F:%s:%s}", strings.ToUpper(k), value)
 }
 
 func TestEmit(t *testing.T) {
@@ -400,7 +385,6 @@ func TestEmit(t *testing.T) {
 		state     State
 		line      *line
 		want      string
-		wantErrs  []error
 		wantState State
 	}{
 
@@ -468,16 +452,6 @@ func TestEmit(t *testing.T) {
 				seenFields: []string{"foo", "bar"},
 			},
 		},
-		{
-			name:  "field formatter returns an error",
-			line:  &line{fields: map[string]interface{}{"a": "error"}},
-			state: State{},
-			want:  "{LVL:X} {TS:∅} {MSG:} ",
-			wantState: State{
-				seenFields: []string{"a"},
-			},
-			wantErrs: []error{Match("error")},
-		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -489,14 +463,9 @@ func TestEmit(t *testing.T) {
 				PriorityFields: []string{"baz"},
 				state:          test.state,
 			}
-			if err := s.Emit(test.line, w); err != nil {
-				f.errors = append(f.errors, err)
-			}
+			s.Emit(test.line, w)
 			if diff := cmp.Diff(w.String(), test.want); diff != "" {
 				t.Errorf("emitted output:\n%v", diff)
-			}
-			if diff := cmp.Diff(f.errors, test.wantErrs, cmp.Comparer(comperror)); diff != "" {
-				t.Errorf("errors:\n%v", diff)
 			}
 			if diff := cmp.Diff(s.state, test.wantState, cmp.AllowUnexported(State{})); diff != "" {
 				t.Errorf("state:\n%v", diff)
@@ -791,16 +760,6 @@ func TestReadLog(t *testing.T) {
 			wantSummary:  Summary{Lines: 1, Errors: 1, Filtered: 0},
 			wantErrs:     nil,
 			wantFinalErr: Match("unexpectedly produced more than 1 output"),
-		},
-		{
-			name:         "field formatter returns an error",
-			r:            strings.NewReader(`{"t":1,"l":"info","m":"hi","an":"error"}`),
-			w:            new(bytes.Buffer),
-			is:           basicSchema,
-			wantOutput:   `{LVL:I} {TS:1} {MSG:hi} {"t":1,"l":"info","m":"hi","an":"error"}` + "\n",
-			wantSummary:  Summary{Lines: 1, Errors: 1},
-			wantErrs:     nil,
-			wantFinalErr: Match("emit: error"),
 		},
 		{
 			name:         "highlighting messages",
