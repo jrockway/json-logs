@@ -195,13 +195,13 @@ func main() {
 		} else if n == 1 {
 			lines += " (1 line filtered)"
 		}
-		errors := "; no parse errors"
+		errmsg := "; no parse errors"
 		if n := summary.Errors; n == 1 {
-			errors = "; 1 parse error"
+			errmsg = "; 1 parse error"
 		} else if n > 1 {
-			errors = fmt.Sprintf("; %d parse errors", n)
+			errmsg = fmt.Sprintf("; %d parse errors", n)
 		}
-		fmt.Fprintf(os.Stderr, "  %s%s.\n", lines, errors)
+		fmt.Fprintf(os.Stderr, "  %s%s.\n", lines, errmsg)
 	}
 	if f != nil {
 		pprof.StopCPUProfile()

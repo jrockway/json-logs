@@ -58,7 +58,7 @@ func TestFormatting(t *testing.T) {
 				AbsoluteTimeFormat:   time.RFC3339,
 				Zone:                 time.UTC,
 			},
-			t:    []time.Time{time.Time{}},
+			t:    []time.Time{{}},
 			want: `       ??? INFO  hello↩world a:field b:↑` + "\n",
 		},
 		{

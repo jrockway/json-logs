@@ -29,7 +29,7 @@ func (f *ignoreTimeFormatter) FormatTime(s *parse.State, t time.Time, w *bytes.B
 
 func TestLoggers(t *testing.T) {
 	exampleObject := map[string]interface{}{"foo": "bar"}
-	exampleError := errors.New("whoa!")
+	exampleError := errors.New("whoa")
 	testData := []struct {
 		name string
 		skip string
@@ -151,7 +151,7 @@ func TestLoggers(t *testing.T) {
 	want := `
 INFO  1 line 1
 INFO  2 line 2 string:value int:42 object:{"foo":"bar"}
-INFO  3 line 3 error:whoa!
+INFO  3 line 3 error:whoa
 `[1:]
 	for _, test := range testData {
 		subTests := map[string]*parse.InputSchema{

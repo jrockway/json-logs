@@ -37,7 +37,7 @@ const (
 	LevelFatal
 )
 
-// InputSchema controls the intepretation of incoming log lines.
+// InputSchema controls the interpretation of incoming log lines.
 type InputSchema struct {
 	TimeKey     string      // The name of the key that holds the timestamp.
 	TimeFormat  TimeParser  // How to turn the value of the time key into a time.Time.
@@ -397,13 +397,13 @@ func (s *InputSchema) ReadLine(l *line) error {
 		}
 	}
 	s.guessSchema(l)
-	if t, ok := l.fields[s.TimeKey]; s.TimeFormat != nil && ok {
-		time, err := s.TimeFormat(t)
+	if raw, ok := l.fields[s.TimeKey]; s.TimeFormat != nil && ok {
+		t, err := s.TimeFormat(raw)
 		if err != nil {
-			pushError(fmt.Errorf("parse time %T(%v) in key %q: %w", t, t, s.TimeKey, err))
+			pushError(fmt.Errorf("parse time %T(%v) in key %q: %w", raw, raw, s.TimeKey, err))
 		} else {
 			delete(l.fields, s.TimeKey)
-			l.time = time
+			l.time = t
 		}
 	} else {
 		pushError(fmt.Errorf("no time key %q in incoming log", s.TimeKey))
@@ -434,7 +434,7 @@ func (s *InputSchema) ReadLine(l *line) error {
 }
 
 // Emit emits a formatted line to the provided buffer.  The provided line object may not be used
-// again until reinitalized.
+// again until reinitialized.
 func (s *OutputSchema) Emit(l *line, w *bytes.Buffer) {
 	// Level.
 	s.Formatter.FormatLevel(&s.state, l.lvl, w)

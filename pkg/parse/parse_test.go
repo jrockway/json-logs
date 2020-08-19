@@ -340,7 +340,7 @@ func (f *testFormatter) FormatLevel(s *State, l Level, w *bytes.Buffer) {
 	if l == LevelPanic {
 		panic("panic")
 	}
-	lvl := "X"
+	var lvl string
 	switch l {
 	case LevelDebug:
 		lvl = "D"
@@ -348,6 +348,8 @@ func (f *testFormatter) FormatLevel(s *State, l Level, w *bytes.Buffer) {
 		lvl = "I"
 	case LevelWarn:
 		lvl = "W"
+	default:
+		lvl = "X"
 	}
 	fmt.Fprintf(w, "{LVL:%s}", lvl)
 }
@@ -362,8 +364,7 @@ func (f *testFormatter) FormatMessage(s *State, msg string, highlight bool, w *b
 }
 func (f *testFormatter) FormatField(s *State, k string, v interface{}, w *bytes.Buffer) {
 	if str, ok := v.(string); ok {
-		switch str {
-		case panicFieldValue:
+		if str == panicFieldValue {
 			panic("panic")
 		}
 	}
@@ -626,13 +627,13 @@ func TestReadLog(t *testing.T) {
 		},
 		{
 			name:         "read error midway through a line",
-			r:            &errReader{data: []byte(goodLine + goodLine), err: errors.New("explosion!"), n: len(goodLine) + 5},
+			r:            &errReader{data: []byte(goodLine + goodLine), err: errors.New("explosion"), n: len(goodLine) + 5},
 			w:            new(bytes.Buffer),
 			is:           basicSchema,
 			wantOutput:   "{LVL:I} {TS:1} {MSG:hi} {F:A:42}\n" + goodLine[:5] + "\n",
 			wantSummary:  Summary{Lines: 2, Errors: 1},
 			wantErrs:     []error{Match("unexpected end of JSON input")},
-			wantFinalErr: errors.New("explosion!"),
+			wantFinalErr: errors.New("explosion"),
 		},
 		{
 			name:         "write error midway through a line",
