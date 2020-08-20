@@ -38,6 +38,7 @@ linters:
         - gofmt
         - golint
         - goprintffuncname
+        - gosec
         - gosimple
         - govet
         - ineffassign
