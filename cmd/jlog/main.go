@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"runtime/pprof"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 	_ "time/tzdata"
@@ -173,8 +174,10 @@ func main() {
 
 	sigCh := make(chan os.Signal)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGPIPE)
+	var nSignals int32
 	go func() {
 		c := <-sigCh
+		atomic.AddInt32(&nSignals, 1)
 		os.Stderr.Write([]byte("signal: " + c.String() + "\n"))
 		os.Stdin.Close()
 		signal.Stop(sigCh)
@@ -182,7 +185,9 @@ func main() {
 
 	summary, err := parse.ReadLog(os.Stdin, colorable.NewColorableStdout(), ins, outs, jq)
 	if err != nil {
-		outs.EmitError(err.Error())
+		if signals := atomic.LoadInt32(&nSignals); signals < 1 || !strings.Contains(err.Error(), "file already closed") {
+			outs.EmitError(err.Error())
+		}
 	}
 
 	if !out.NoSummary {
