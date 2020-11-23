@@ -16,3 +16,6 @@ coverage.html
 testlog
 log
 *.log
+
+# goreleaser outputs
+dist/

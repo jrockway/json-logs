@@ -1,0 +1,66 @@
+project_name: jlog
+env_files:
+    github_token: ~/.github_token
+before:
+    hooks:
+        - go mod download
+        - go test ./...
+        - golangci-lint run
+builds:
+    - id: jlog
+      dir: .
+      main: ./cmd/jlog/main.go
+      binary: jlog
+      env:
+          - CGO_ENABLED=0
+      goos:
+          - linux
+          - windows
+          - darwin
+      goarch:
+          - amd64
+          - arm
+          - arm64
+      ignore:
+          - goos: darwin
+            goarch: arm
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: arm
+          - goos: windows
+            goarch: arm64
+      ldflags:
+          - "-s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X
+            main.date={{.CommitDate}} -X main.builtBy=goreleaser"
+      mod_timestamp: "{{.CommitTimestamp}}"
+      flags: -trimpath
+archives:
+    - id: jlog
+      builds:
+          - jlog
+      format: binary
+      wrap_in_directory: false
+      name_template: "jlog_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+checksum:
+    name_template: "checksums.txt"
+snapshot:
+    name_template: "{{ .Tag }}-next"
+changelog:
+    sort: asc
+    filters:
+        exclude:
+            - "^docs:"
+            - "^test:"
+release:
+    github:
+        owner: jrockway
+        name: json-logs
+    ids:
+        - jlog
+    draft: true
+    prerelease: auto
+    name_template: "jlog {{.Version}}"
+    disable: false
+source:
+    enabled: false

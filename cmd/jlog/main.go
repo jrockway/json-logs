@@ -19,6 +19,13 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+	builtBy = "unknown"
+)
+
 type output struct {
 	NoElideDuplicates  bool     `long:"no-elide" description:"Disable eliding repeated fields.  By default, fields that have the same value as the line above them have their values replaced with '↑'." env:"JLOG_NO_ELIDE_DUPLICATES"`
 	RelativeTimestamps bool     `short:"r" long:"relative" description:"Print timestamps as a duration since the program started instead of absolute timestamps." env:"JLOG_RELATIVE_TIMESTAMPS"`
@@ -30,9 +37,9 @@ type output struct {
 }
 
 type general struct {
-	JQ           string `short:"e" description:"A jq program to run on the processed input; use this to ignore certain lines, add fields, etc."`
+	JQ           string `short:"e" description:"A jq program to run on each record in the processed input; use this to ignore certain lines, add fields, etc.  Hint: 'select(condition)' will remove lines that don't match 'condition'."`
 	NoColor      bool   `short:"M" long:"no-color" description:"Disable the use of color." env:"JLOG_FORCE_MONOCHROME"`
-	NoMonochrome bool   `short:"C" long:"no-monochrome" description:"Force the use of color." ENV:"JLOG_FORCE_COLOR"`
+	NoMonochrome bool   `short:"C" long:"no-monochrome" description:"Force the use of color.  Note: the short flag will change in a future release." ENV:"JLOG_FORCE_COLOR"`
 	Profile      string `long:"profile" description:"If set, collect a CPU profile and write it to this file."`
 }
 
@@ -60,7 +67,8 @@ func main() {
 
 	if _, err := fp.Parse(); err != nil {
 		if ferr, ok := err.(*flags.Error); ok && ferr.Type == flags.ErrHelp {
-			fmt.Fprintf(os.Stderr, "jlog - Search and pretty-print your JSON logs.\n\nMore info: https://github.com/jrockway/json-logs\n")
+			fmt.Fprintf(os.Stderr, "jlog - Search and pretty-print your JSON logs.\nMore info: https://github.com/jrockway/json-logs\n")
+			fmt.Fprintf(os.Stderr, "Version %s (%s) built on %s by %s\n", version, commit, date, builtBy)
 			fmt.Fprintf(os.Stderr, ferr.Message)
 			os.Exit(2)
 		}
