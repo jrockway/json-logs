@@ -31,7 +31,7 @@ builds:
           - goos: windows
             goarch: arm64
       ldflags:
-          - "-s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X
+          - "-s -w -X main.version=v{{.Version}} -X main.commit={{.Commit}} -X
             main.date={{.CommitDate}} -X main.builtBy=goreleaser"
       mod_timestamp: "{{.CommitTimestamp}}"
       flags: -trimpath
@@ -41,7 +41,7 @@ archives:
           - jlog
       format: binary
       wrap_in_directory: false
-      name_template: "jlog_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+      name_template: "jlog_v{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 checksum:
     name_template: "checksums.txt"
 snapshot:
@@ -60,7 +60,7 @@ release:
         - jlog
     draft: true
     prerelease: auto
-    name_template: "jlog {{.Version}}"
+    name_template: "jlog v{{.Version}}"
     disable: false
 source:
     enabled: false
