@@ -34,6 +34,7 @@ type output struct {
 	NoSummary          bool     `long:"no-summary" description:"Suppress printing the summary at the end." env:"JLOG_NO_SUMMARY"`
 	PriorityFields     []string `long:"priority" short:"p" description:"A list of fields to show first; repeatable." env:"JLOG_PRIORITY_FIELDS" env-delim:","`
 	HighlightFields    []string `long:"highlight" short:"H" description:"A list of fields to visually distinguish; repeatable." env:"JLOG_HIGHLIGHT_FIELDS" env-delim:"," default:"err" default:"error" default:"warn" default:"warning"`
+	MultiLine          bool     `long:"multiline" short:"m" description:"Display log message fields across multiple lines." evn:"JLOG_MULTILINE"`
 }
 
 type general struct {
@@ -165,9 +166,11 @@ func main() {
 
 	defaultOutput := &parse.DefaultOutputFormatter{
 		Aurora:               aurora.NewAurora(wantColor),
+		WantColor:            wantColor,
 		ElideDuplicateFields: !out.NoElideDuplicates,
 		AbsoluteTimeFormat:   out.TimeFormat,
 		SubSecondsOnlyFormat: subsecondFormt,
+		Multiline:            out.MultiLine,
 		Zone:                 time.Local,
 		HighlightFields:      make(map[string]struct{}),
 	}

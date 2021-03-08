@@ -2,17 +2,19 @@ package parse
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/fatih/color"
+	"github.com/hokaccha/go-prettyjson"
 	aurora "github.com/logrusorgru/aurora/v3"
 )
 
 type DefaultOutputFormatter struct {
-	Aurora aurora.Aurora // Controls the use of color.
+	Aurora    aurora.Aurora // Controls the use of color.
+	WantColor bool
 
 	// If true, print ↑ for fields that have an identical value as the previous line.
 	ElideDuplicateFields bool
@@ -33,6 +35,9 @@ type DefaultOutputFormatter struct {
 	// Decimals are only aligned by careful selection of AbsoluteTimeFormat and
 	// SecondsOnlyFormat strings.  The algorithm does nothing smart.
 	SubSecondsOnlyFormat string
+
+	// If true, pretty-print JSON across multiple lines.
+	Multiline bool
 
 	Zone            *time.Location      // Zone is the time zone to display the output in.
 	HighlightFields map[string]struct{} // HighlightFields visually distinguishes the named fields.
@@ -126,7 +131,9 @@ func (f *DefaultOutputFormatter) FormatField(s *State, k string, v interface{}, 
 	if f.HighlightFields != nil {
 		_, highlight = f.HighlightFields[k]
 	}
-
+	if f.Multiline {
+		w.WriteString("\n  ")
+	}
 	if highlight {
 		w.WriteString(f.Aurora.Yellow(k).String())
 	} else {
@@ -139,8 +146,21 @@ func (f *DefaultOutputFormatter) FormatField(s *State, k string, v interface{}, 
 	case string:
 		value = []byte(x)
 	default:
+		pretty := prettyjson.NewFormatter()
+		pretty.KeyColor = color.New(color.FgBlue)
+		pretty.StringColor = color.New(color.Reset)
+		pretty.BoolColor = color.New(color.FgYellow)
+		pretty.NumberColor = color.New(color.FgCyan)
+		pretty.NullColor = color.New(color.FgHiBlack)
+		pretty.DisabledColor = !f.WantColor
 		var err error
-		value, err = json.Marshal(v)
+		if f.Multiline {
+			pretty.Indent = 4
+		} else {
+			pretty.Indent = 0
+			pretty.Newline = ""
+		}
+		value, err = pretty.Marshal(v)
 		if err != nil {
 			panic(fmt.Sprintf("marshal value: %v", err))
 		}
