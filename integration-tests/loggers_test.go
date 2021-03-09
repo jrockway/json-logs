@@ -135,6 +135,33 @@ func TestLoggers(t *testing.T) {
 				l.Error("line 3", exampleError)
 			},
 		},
+		{
+			name: "bunyan",
+			ins: &parse.InputSchema{
+				LevelKey:    "level",
+				MessageKey:  "msg",
+				TimeKey:     "time",
+				LevelFormat: parse.BunyanV0LevelParser,
+				TimeFormat:  parse.DefaultTimeParser,
+				Strict:      true,
+				DeleteKeys:  []string{"v"},
+			},
+			f: func(buf *bytes.Buffer) {
+				// This is a node library.  We could bundle webpack and a JS
+				// interpreter, but I just ran this program and copied in the
+				// output.
+
+				// var bunyan = require("bunyan");
+				// var log = bunyan.createLogger({ name: "test" });
+				// log.info("line 1");
+				// log.info({ string: "value", int: 42, object: { foo: "bar" } }, "line 2");
+				// log.info({ error: "whoa" }, "line 3");
+				buf.Write([]byte(`{"level":30,"msg":"line 1","time":"2021-03-09T17:44:26.203Z","v":0}
+{"level":30,"string":"value","int":42,"object":{"foo":"bar"},"msg":"line 2","time":"2021-03-09T17:44:26.204Z","v":0}
+{"level":30,"error":"whoa","msg":"line 3","time":"2021-03-09T17:44:26.204Z","v":0}
+`))
+			},
+		},
 	}
 
 	f := &ignoreTimeFormatter{

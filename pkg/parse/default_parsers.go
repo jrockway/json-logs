@@ -91,6 +91,28 @@ func LagerLevelParser(in interface{}) (Level, error) {
 	}
 }
 
+// BunyanV0LLevelParser maps bunyan's float64 levels to log levels.
+func BunyanV0LevelParser(in interface{}) (Level, error) {
+	x, ok := in.(float64)
+	if !ok {
+		return LevelUnknown, fmt.Errorf("invalid bunyan log level %T(%v), want float64", in, in)
+	}
+	if x <= 10 {
+		return LevelTrace, nil
+	} else if x <= 20 {
+		return LevelDebug, nil
+	} else if x <= 30 {
+		return LevelInfo, nil
+	} else if x <= 40 {
+		return LevelWarn, nil
+	} else if x <= 50 {
+		return LevelError, nil
+	} else if x <= 60 {
+		return LevelFatal, nil
+	}
+	return LevelUnknown, fmt.Errorf("invalid bunyan log level %v", x)
+}
+
 // DefaultLevelParser uses common strings to determine the log level.  Case does not matter; info is
 // the same log level as INFO.
 func DefaultLevelParser(in interface{}) (Level, error) {

@@ -48,6 +48,10 @@ type InputSchema struct {
 	// If true, print an error when non-JSON lines appear in the input.  If false, treat them
 	// as normal messages with as much information extracted as possible.
 	Strict bool
+
+	// DeleteKeys contains a list of keys to delete; used when the log lines contain version
+	// information that is used for guessing the schema.
+	DeleteKeys []string
 }
 
 // OutputFormatter describes an object that actually does the output formatting.  Methods take a
@@ -345,6 +349,18 @@ func (s *InputSchema) guessSchema(l *line) {
 		s.MessageKey = "message"
 		return
 	}
+	if has("time") && has("level") && has("v") && has("msg") {
+		// bunyan
+		if v, ok := l.fields["v"].(float64); ok && v == 0 {
+			s.TimeKey = "time"
+			s.TimeFormat = DefaultTimeParser // RFC3339
+			s.LevelKey = "level"
+			s.LevelFormat = BunyanV0LevelParser
+			s.MessageKey = "msg"
+			s.DeleteKeys = append(s.DeleteKeys, "v")
+			return
+		}
+	}
 	if has("time") && has("level") && has("msg") {
 		// logrus default json encoder
 		s.TimeKey = "time"
@@ -429,6 +445,9 @@ func (s *InputSchema) ReadLine(l *line) error {
 		}
 	} else {
 		pushError(fmt.Errorf("no level key %q in incoming log", s.LevelKey))
+	}
+	for _, k := range s.DeleteKeys {
+		delete(l.fields, k)
 	}
 	return retErr
 }

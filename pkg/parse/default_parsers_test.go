@@ -80,6 +80,14 @@ func TestLevelParsers(t *testing.T) {
 		{float64(1), LagerLevelParser, LevelInfo, false},
 		{float64(2), LagerLevelParser, LevelError, false},
 		{float64(3), LagerLevelParser, LevelFatal, false},
+		{float64(10), BunyanV0LevelParser, LevelTrace, false},
+		{float64(20), BunyanV0LevelParser, LevelDebug, false},
+		{float64(30), BunyanV0LevelParser, LevelInfo, false},
+		{float64(40), BunyanV0LevelParser, LevelWarn, false},
+		{float64(50), BunyanV0LevelParser, LevelError, false},
+		{float64(60), BunyanV0LevelParser, LevelFatal, false},
+		{"foo", BunyanV0LevelParser, LevelUnknown, true},
+		{float64(61), BunyanV0LevelParser, LevelUnknown, true},
 	}
 	for i, test := range testData {
 		got, err := test.parser(test.in)
