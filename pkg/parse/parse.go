@@ -349,6 +349,15 @@ func (s *InputSchema) guessSchema(l *line) {
 		s.MessageKey = "message"
 		return
 	}
+	if has("time") && has("severity") && has("message") {
+		// another stackdriver format
+		s.TimeKey = "time"
+		s.TimeFormat = DefaultTimeParser
+		s.LevelKey = "severity"
+		s.LevelFormat = DefaultLevelParser
+		s.MessageKey = "message"
+		return
+	}
 	if has("time") && has("level") && has("v") && has("msg") {
 		// bunyan
 		if v, ok := l.fields["v"].(float64); ok && v == 0 {

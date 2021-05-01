@@ -98,6 +98,34 @@ func TestLoggers(t *testing.T) {
 			},
 		},
 		{
+			name: "logrus/json-stackdriver",
+			ins: &parse.InputSchema{
+				LevelKey:    "severity",
+				MessageKey:  "message",
+				TimeKey:     "time",
+				LevelFormat: parse.DefaultLevelParser,
+				TimeFormat:  parse.DefaultTimeParser,
+				Strict:      true,
+			},
+			f: func(buf *bytes.Buffer) {
+				l := &logrus.Logger{
+					Out: buf,
+					Formatter: &logrus.JSONFormatter{
+						FieldMap: logrus.FieldMap{
+							logrus.FieldKeyTime:  "time",
+							logrus.FieldKeyLevel: "severity",
+							logrus.FieldKeyMsg:   "message",
+						},
+						TimestampFormat: time.RFC3339Nano,
+					},
+					Level: logrus.DebugLevel,
+				}
+				l.Info("line 1")
+				l.WithField("string", "value").WithField("int", 42).WithField("object", exampleObject).Info("line 2")
+				l.WithError(exampleError).Info("line 3")
+			},
+		},
+		{
 			name: "lager/pretty",
 			skip: "we can't handle the extra 'test.' appended to each message",
 			ins: &parse.InputSchema{
