@@ -25,6 +25,13 @@ type ignoreTimeFormatter struct {
 func (f *ignoreTimeFormatter) FormatTime(s *parse.State, t time.Time, w *bytes.Buffer) {
 	f.i++
 	w.WriteString(strconv.Itoa(f.i))
+	// Check that the time is in some plausible range.  These could be very close to time.Now(),
+	// but for Bunyan we hard-coded some times that get farther into the past every day.
+	if t.After(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)) && t.Before(time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)) {
+		w.WriteString(" ok")
+	} else {
+		w.WriteString(" fail")
+	}
 }
 
 func TestLoggers(t *testing.T) {
@@ -204,9 +211,9 @@ func TestLoggers(t *testing.T) {
 		Formatter:      f,
 	}
 	want := `
-INFO  1 line 1
-INFO  2 line 2 string:value int:42 object:{"foo":"bar"}
-INFO  3 line 3 error:whoa
+INFO  1 ok line 1
+INFO  2 ok line 2 string:value int:42 object:{"foo":"bar"}
+INFO  3 ok line 3 error:whoa
 `[1:]
 	for _, test := range testData {
 		subTests := map[string]*parse.InputSchema{
