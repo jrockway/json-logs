@@ -91,7 +91,7 @@ will print times in Pacific, for example.
 
 `-p` Will ensure that if a named field is present, it will appear immediately after the message.
 
-`-h` Will highlight the named field in a different color. `-h error` is nice for locating errors at
+`-H` Will highlight the named field in a different color. `-H error` is nice for locating errors at
 a glance.
 
 ## Filtering
