@@ -2,6 +2,8 @@
 
 This repository contains a tool, `jlog`, to pretty-print JSON logs, like those from zap or logrus.
 
+![Capture](https://user-images.githubusercontent.com/2367/147866746-3ec76eda-e7c6-41df-b1c1-b1f85f001922.PNG)
+
 ## Installation
 
 Grab a binary from the releases area, `chmod a+x` it, and move it to somewhere in your $PATH. Or you
