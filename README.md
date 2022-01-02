@@ -1,2 +1,99 @@
 # json-logs
-A tool to pretty-print JSON logs, like those from zap or logrus.
+
+This repository contains a tool, `jlog`, to pretty-print JSON logs, like those from zap or logrus.
+
+## Installation
+
+Grab a binary from the releases area, `chmod a+x` it, and move it to somewhere in your $PATH. Or you
+can `go install github.com/jrockway/json-logs/cmd/jlog@latest`.
+
+## Use
+
+Pipe it some json-formatted logs:
+
+    $ jlog < log
+    $ kubectl logs some-pod | jlog
+    # etc.
+
+The format is automatically guessed, and timestamps will appear in your local time zone.
+
+Here's the `--help` message:
+
+    jlog [OPTIONS]
+
+    Input Schema:
+      -l, --lax              If true, suppress any validation errors including non-JSON log lines and missing timestamps, levels, and message.  We extract as many of those as we can, but if something is missing,
+                             the errors will be silently discarded. [$JLOG_LAX]
+          --levelkey=        JSON key that holds the log level. [$JLOG_LEVEL_KEY]
+          --timekey=         JSON key that holds the log timestamp. [$JLOG_TIMESTAMP_KEY]
+          --messagekey=      JSON key that holds the log message. [$JLOG_MESSAGE_KEY]
+
+    Output Format:
+          --no-elide         Disable eliding repeated fields.  By default, fields that have the same value as the line above them have their values replaced with '↑'. [$JLOG_NO_ELIDE_DUPLICATES]
+      -r, --relative         Print timestamps as a duration since the program started instead of absolute timestamps. [$JLOG_RELATIVE_TIMESTAMPS]
+      -t, --time-format=     A go time.Format string describing how to format timestamps, or one of 'rfc3339(milli|micro|nano)', 'unix', 'stamp(milli|micro|nano)', or 'kitchen'. (default: stamp)
+                             [$JLOG_TIME_FORMAT]
+      -s, --only-subseconds  Display only the fractional part of times that are in the same second as the last log line.  Only works with the (milli|micro|nano) formats above.  (This can be revisited, but it's
+                             complicated.) [$JLOG_ONLY_SUBSECONDS]
+          --no-summary       Suppress printing the summary at the end. [$JLOG_NO_SUMMARY]
+      -p, --priority=        A list of fields to show first; repeatable. [$JLOG_PRIORITY_FIELDS]
+      -H, --highlight=       A list of fields to visually distinguish; repeatable. (default: err, error, warn, warning) [$JLOG_HIGHLIGHT_FIELDS]
+
+    General:
+      -e=                    A jq program to run on each record in the processed input; use this to ignore certain lines, add fields, etc.  Hint: 'select(condition)' will remove lines that don't match 'condition'.
+      -M, --no-color         Disable the use of color. [$JLOG_FORCE_MONOCHROME]
+      -C, --no-monochrome    Force the use of color. Note: the short flag will change in a future release.
+      --profile=             If set, collect a CPU profile and write it to this file.
+
+    Help Options:
+      -h, --help             Show this help message
+
+All options can be set as environment variables; if there's something you use every time you invoke
+it, just set it up in your shell's init file.
+
+### Input
+
+`--levelkey`, `--timekey`, and `--messagekey` will allow jlog to handle log formats it's not yet
+taught to recognize. If your JSON log uses `foo` as the level, `bar` as the time, and `baz` as the
+message, like: `{"foo":"info", "bar":"2022-01-01T00:00:00.123", "baz":"information!"}`, then
+`jlog --levelkey=foo --timekey=bar --messagekey=baz` will allow jlog to properly format those logs.
+
+## Output
+
+There are many options to control the output format. You can output times in your favorite format
+with `-t XXX`, where XXX is one of the options listed above or any
+[go time format string](https://pkg.go.dev/time#pkg-constants).
+
+If you want to distinguish events that happened in the same second as the previous line, use `-s`.
+It will turn output like:
+
+    2022-01-01T00:00:00.000 DEBUG this is a debug message
+    2022-01-01T00:00:00.123 DEBUG this is another debug message
+    2022-01-01T00:00:01.000 DEBUG this is the last debug message
+
+Into:
+
+    2022-01-01T00:00:00.000 DEBUG this is a debug message
+                       .123 DEBUG this is another debug message
+    2022-01-01T00:00:01.000 DEBUG this is the last debug message
+
+This can sometimes make spammy logs a little easier on the eyes.
+
+You can pass `-r` to see the time difference between when the program started, and the log line.
+This is good if you don't want to do any mental math.
+
+You can adjust the output timezone with the `TZ` environment variable. `TZ=America/Los_Angeles jlog`
+will print times in Pacific, for example.
+
+`-p` Will ensure that if a named field is present, it will appear immediately after the message.
+
+`-h` Will highlight the named field in a different color. `-h error` is nice for locating errors at
+a glance.
+
+## Filtering
+
+You can pass a [jq](https://stedolan.github.io/jq/) program to process the input. Something like
+`jlog -e 'select($LVL>$INFO)'` will only show logs with a level greater than info. Something like
+`jlog -e 'select($MSG | test("foo"))'` will only show messages that contain "foo" (even if a field
+contains foo). You can of course access any field in the parsed JSON log line and make selection
+decisions on that, or delete fields, or add new fields.
