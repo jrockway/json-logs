@@ -445,7 +445,7 @@ func (s *InputSchema) ReadLine(l *line) error {
 	} else {
 		pushError(fmt.Errorf("no message key %q in incoming log", s.MessageKey))
 	}
-	if lvl, ok := l.fields[s.LevelKey]; ok {
+	if lvl, ok := l.fields[s.LevelKey]; s.LevelFormat != nil && ok {
 		if parsed, err := s.LevelFormat(lvl); err != nil {
 			pushError(fmt.Errorf("level key %q: %w", s.LevelKey, err))
 		} else {
