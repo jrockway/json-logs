@@ -2,6 +2,8 @@
 
 This repository contains a tool, `jlog`, to pretty-print JSON logs, like those from zap or logrus.
 
+Here's what it looks like in action (on some logs from an [opinionated-server server](https://github.com/jrockway/opinionated-server)).
+
 ![Screenshot](https://user-images.githubusercontent.com/2367/147866806-aa5c68c3-f5ba-4f58-884d-4372986868b9.PNG)
 
 ## Installation
