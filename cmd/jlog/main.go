@@ -65,7 +65,8 @@ func main() {
 		panic(err)
 	}
 
-	if _, err := fp.Parse(); err != nil {
+	extraArgs, err := fp.Parse()
+	if err != nil {
 		if ferr, ok := err.(*flags.Error); ok && ferr.Type == flags.ErrHelp {
 			fmt.Fprintf(os.Stderr, "jlog - Search and pretty-print your JSON logs.\nMore info: https://github.com/jrockway/json-logs\n")
 			fmt.Fprintf(os.Stderr, "Version %s (%s) built on %s by %s\n", version, commit, date, builtBy)
@@ -74,6 +75,10 @@ func main() {
 		}
 		fmt.Fprintf(os.Stderr, "flag parsing: %v\n", err)
 		os.Exit(3)
+	}
+	if len(extraArgs) > 0 {
+		fmt.Fprintf(os.Stderr, "unexpected command-line arguments after flag parsing: %v\n", extraArgs)
+		os.Exit(1)
 	}
 	var f *os.File
 	if gen.Profile != "" {
