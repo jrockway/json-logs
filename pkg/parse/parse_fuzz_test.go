@@ -4,7 +4,9 @@
 package parse
 
 import (
+	"bufio"
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/logrusorgru/aurora/v3"
@@ -38,6 +40,12 @@ func FuzzReadLog(f *testing.F) {
 		}
 		outbuf := new(bytes.Buffer)
 		if _, err := ReadLog(inbuf, outbuf, ins, outs, jq); err != nil {
+			if errors.Is(err, bufio.ErrTooLong) {
+				// This is a known limit and the fuzzer likes to produce very long
+				// garbage lines.  The tests convinced me to increase this limit,
+				// but it has to be limited somewhere.
+				t.SkipNow()
+			}
 			t.Fatal(err)
 		}
 		if got, want := bytes.Count(outbuf.Bytes(), []byte("\n")), bytes.Count(in, []byte("\n")); got < want {

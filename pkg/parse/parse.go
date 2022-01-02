@@ -37,6 +37,9 @@ const (
 	LevelFatal
 )
 
+// LineBufferSize is the longest we're willing to look for a newline in the input.
+const LineBufferSize = 1 * 1024 * 1024 // 1 MiB
+
 // InputSchema controls the interpretation of incoming log lines.
 type InputSchema struct {
 	TimeKey     string      // The name of the key that holds the timestamp.
@@ -193,6 +196,7 @@ func runJQ(jq *gojq.Code, l *line) (bool, error) {
 // on the reader, are returned.
 func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq *gojq.Code) (Summary, error) {
 	s := bufio.NewScanner(r)
+	s.Buffer(make([]byte, 0, LineBufferSize), LineBufferSize)
 	var l line
 	outs.state = State{
 		lastFields: make(map[string][]byte),
