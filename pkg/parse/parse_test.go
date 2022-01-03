@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"regexp"
 	"strings"
@@ -804,7 +803,7 @@ func TestReadLog(t *testing.T) {
 
 func TestReadLogWithNullFormatter(t *testing.T) {
 	r := strings.NewReader(`{"level":"info","ts":12345,"msg":"foo"}` + "\n")
-	w := ioutil.Discard
+	w := io.Discard
 	is := &InputSchema{Strict: false}
 	os := &OutputSchema{}
 	jq := mustJQ(".")

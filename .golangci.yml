@@ -36,7 +36,6 @@ linters:
         - exportloopref
         - gocritic
         - gofmt
-        - golint
         - goprintffuncname
         - gosec
         - gosimple

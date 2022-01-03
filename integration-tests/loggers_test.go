@@ -191,10 +191,10 @@ func TestLoggers(t *testing.T) {
 				// log.info("line 1");
 				// log.info({ string: "value", int: 42, object: { foo: "bar" } }, "line 2");
 				// log.info({ error: "whoa" }, "line 3");
-				buf.Write([]byte(`{"level":30,"msg":"line 1","time":"2021-03-09T17:44:26.203Z","v":0}
+				buf.WriteString(`{"level":30,"msg":"line 1","time":"2021-03-09T17:44:26.203Z","v":0}
 {"level":30,"string":"value","int":42,"object":{"foo":"bar"},"msg":"line 2","time":"2021-03-09T17:44:26.204Z","v":0}
 {"level":30,"error":"whoa","msg":"line 3","time":"2021-03-09T17:44:26.204Z","v":0}
-`))
+`)
 			},
 		},
 	}

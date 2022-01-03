@@ -191,7 +191,7 @@ func main() {
 	go func() {
 		c := <-sigCh
 		atomic.AddInt32(&nSignals, 1)
-		os.Stderr.Write([]byte("signal: " + c.String() + "\n"))
+		fmt.Fprintf(os.Stderr, "signal: %v\n", c.String())
 		os.Stdin.Close()
 		signal.Stop(sigCh)
 	}()

@@ -124,7 +124,6 @@ func (l *JSONLogs) UnmarshalText(in []byte) error {
 				valueBytes = append(valueBytes, b)
 			}
 		}
-
 	}
 	if len(keyBytes) > 0 {
 		appendKV(line, keyBytes, valueBytes)
