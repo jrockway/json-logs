@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"regexp"
 	"strings"
@@ -798,6 +799,17 @@ func TestReadLog(t *testing.T) {
 				t.Errorf("final error:\n  got: %v\n want: %v", got, want)
 			}
 		})
+	}
+}
+
+func TestReadLogWithNullFormatter(t *testing.T) {
+	r := strings.NewReader(`{"level":"info","ts":12345,"msg":"foo"}` + "\n")
+	w := ioutil.Discard
+	is := &InputSchema{Strict: false}
+	os := &OutputSchema{}
+	jq := mustJQ(".")
+	if _, err := ReadLog(r, w, is, os, jq); err != nil {
+		t.Fatal(err)
 	}
 }
 

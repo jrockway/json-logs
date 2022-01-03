@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/itchyny/gojq"
+	"github.com/logrusorgru/aurora/v3"
 )
 
 // TimeParser is a function that parses timestamps in log messages.
@@ -202,7 +203,9 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 		lastFields: make(map[string][]byte),
 	}
 	if outs.Formatter == nil {
-		outs.Formatter = &DefaultOutputFormatter{}
+		outs.Formatter = &DefaultOutputFormatter{
+			Aurora: aurora.NewAurora(false),
+		}
 	}
 	var sum Summary
 	buf := new(bytes.Buffer)
