@@ -3,7 +3,6 @@ package parse
 import (
 	"bufio"
 	"bytes"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"math"
@@ -49,8 +48,6 @@ func runReadLog(t *testing.T, jq *gojq.Code, in []byte, expectedLines int) {
 		t.Fatal(err)
 	}
 	outBytes := outbuf.Bytes()
-	t.Logf("output:\n%s", hex.Dump(outBytes))
-
 	approxInputLines := bytes.Count(in, []byte("\n"))
 	if got, want := summary.Lines, approxInputLines; got < want {
 		t.Errorf("input line count compared to summary:\n  got: %v\n want: %v", got, want)
@@ -77,12 +74,8 @@ func FuzzReadLog(f *testing.F) {
 		`{"ts": 1235, "level": "warn", "msg": "line 2"}`))
 	f.Add([]byte(`{"ts": 1234, "level": "info", "msg": "hello"}` + "\n{}\n"))
 
-	jq, err := CompileJQ(".")
-	if err != nil {
-		f.Fatalf("jq: %v", err)
-	}
 	f.Fuzz(func(t *testing.T, in []byte) {
-		runReadLog(t, jq, in, 0)
+		runReadLog(t, nil, in, 0)
 	})
 }
 
@@ -97,16 +90,13 @@ func FuzzReadLogWithJSON(f *testing.F) {
 	f.Add("\x00\x00\x00\x00")
 	f.Add("\x01\x04\x07")
 	f.Add("\x01\x04\x07\xfffoo\x00bar\x00\x00\x01\x04\x07")
-	jq, err := CompileJQ(".")
-	if err != nil {
-		f.Fatalf("jq: %v", err)
-	}
+
 	f.Fuzz(func(t *testing.T, in string) {
 		var l fuzzsupport.JSONLogs
 		if err := l.UnmarshalText([]byte(in)); err != nil {
 			t.Fatalf("unmarshal test case: %v", err)
 		}
-		runReadLog(t, jq, l.Data, l.NLines)
+		runReadLog(t, nil, l.Data, l.NLines)
 	})
 }
 
