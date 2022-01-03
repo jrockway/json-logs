@@ -46,7 +46,8 @@ func FuzzReadLog(f *testing.F) {
 			},
 		}
 		outbuf := new(bytes.Buffer)
-		if _, err := ReadLog(inbuf, outbuf, ins, outs, jq); err != nil {
+		summary, err := ReadLog(inbuf, outbuf, ins, outs, jq)
+		if err != nil {
 			if errors.Is(err, bufio.ErrTooLong) {
 				// This is a known limit and the fuzzer likes to produce very long
 				// garbage lines.  The tests convinced me to increase this limit,
@@ -55,7 +56,12 @@ func FuzzReadLog(f *testing.F) {
 			}
 			t.Fatal(err)
 		}
-		if got, want := bytes.Count(outbuf.Bytes(), []byte("\n")), bytes.Count(in, []byte("\n")); got < want {
+		approxInputLines := bytes.Count(in, []byte("\n"))
+		gotOutputLines := bytes.Count(outbuf.Bytes(), []byte("\n"))
+		if sum, out := summary.Lines, gotOutputLines; sum != out {
+			t.Errorf("output: line count compared to summary:\n summary: %v\n  output: %v", sum, out)
+		}
+		if got, want := gotOutputLines, approxInputLines; got < want {
 			t.Errorf("output: line count:\n  got:   %v\n want: >=%v", got, want)
 		}
 		if errbuf.Len() > 0 {
