@@ -49,16 +49,22 @@ var cannedValues = []struct {
 	{"level", "invalid", stateDefault},
 	{"level", "fatal", stateDefault},
 	{"level", "ERROR", stateDefault},
+	{"level", "null", stateDefault},
 	{"ts", "-1234", stateDefault},
+	{"ts", "null", stateDefault},
+	{"timestamp", "null", stateDefault},
 	{"msg", "{}", stateDefault},
 	{"msg", "[1]", stateDefault},
 	{"msg", `{"key":"value"}`, stateDefault},
 	{"msg", "contains\na newline", stateDefault},
+	{"msg", "null", stateDefault},
 	{"error", "contains\na newline", stateDefault},
+	{"error", "null", stateDefault},
 	{"ts", "not a time", stateDefault},
 	{"ts", `{"x":42}`, stateDefault},
 	{"ts", "contains\na newline", stateDefault},
 	{"v", "-1", stateDefault},
+	{"v", "null", stateDefault},
 }
 
 // JSONLogStream is an alias for []byte so that a cmp.Transformer can be used in tests.
@@ -148,6 +154,10 @@ func appendKV(js map[string]any, key, value []byte) {
 	f, err := strconv.ParseFloat(string(value), 64)
 	if err == nil && !math.IsNaN(f) { // NaN can't be marshaled to JSON, causing problems later.
 		js[string(key)] = f
+		return
+	}
+	if bytes.Equal(value, []byte("null")) {
+		js[string(key)] = nil
 		return
 	}
 	if len(value) > 0 && (value[0] == '{' || value[0] == '[') {

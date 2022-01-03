@@ -79,6 +79,14 @@ func TestUnmarshalText(t *testing.T) {
 				NLines: 1,
 			},
 		},
+		{
+			name:  "log with null value",
+			input: "\x01\x04\x20",
+			want: JSONLogs{
+				Data:   []byte(`{"ts":1234,"level":"info","msg":null}` + "\n"),
+				NLines: 1,
+			},
+		},
 	}
 
 	for _, test := range testData {
