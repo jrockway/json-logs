@@ -2,9 +2,17 @@
 
 This repository contains a tool, `jlog`, to pretty-print JSON logs, like those from zap or logrus.
 
-Here's what it looks like in action (on some logs from an [opinionated-server server](https://github.com/jrockway/opinionated-server)).
+Here's what it looks like in action (on some logs from an
+[opinionated-server server](https://github.com/jrockway/opinionated-server)).
 
 ![Screenshot](https://user-images.githubusercontent.com/2367/147866806-aa5c68c3-f5ba-4f58-884d-4372986868b9.PNG)
+
+The main goal is to never hide any information in the underlying logs, even if a particular line
+doesn't parse. Unparsable lines or lines with missing information will be echoed verbatim, and at
+the very end, a count is produced summarizing lines that parsed, lines that didn't parse, and lines
+that were filtered out with a user expression (`-e`). That way, you know you're seeing everything,
+even when an annoying library writes plain text to your JSON logs. These guarantees are tested with
+fuzz tests and live integration tests against common logging libraries.
 
 ## Installation
 
