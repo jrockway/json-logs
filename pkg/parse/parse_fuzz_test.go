@@ -19,10 +19,10 @@ import (
 
 func FuzzReadLog(f *testing.F) {
 	f.Add([]byte(`{}`))
-	f.Add([]byte(`{"ts": 1234, "level": "info", "msg": "hello"}\n`))
-	f.Add([]byte(`{"ts": 1234, "level": "info", "msg": "hello"}\n` +
+	f.Add([]byte(`{"ts": 1234, "level": "info", "msg": "hello"}` + "\n"))
+	f.Add([]byte(`{"ts": 1234, "level": "info", "msg": "hello"}` + "\n" +
 		`{"ts": 1235, "level": "warn", "msg": "line 2"}`))
-	f.Add([]byte(`{"ts": 1234, "level": "info", "msg": "hello"}\n{}\n`))
+	f.Add([]byte(`{"ts": 1234, "level": "info", "msg": "hello"}` + "\n{}\n"))
 	jq, err := CompileJQ(".")
 	if err != nil {
 		f.Fatalf("jq: %v", err)
