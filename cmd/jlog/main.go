@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"runtime/pprof"
 	"strings"
 	"sync/atomic"
@@ -70,6 +71,14 @@ func main() {
 		if ferr, ok := err.(*flags.Error); ok && ferr.Type == flags.ErrHelp {
 			fmt.Fprintf(os.Stderr, "jlog - Search and pretty-print your JSON logs.\nMore info: https://github.com/jrockway/json-logs\n")
 			fmt.Fprintf(os.Stderr, "Version %s (%s) built on %s by %s\n", version, commit, date, builtBy)
+			if buildinfo, ok := debug.ReadBuildInfo(); ok {
+				fmt.Fprintf(os.Stderr, "    built with go %v\n", buildinfo.GoVersion)
+				if commit == "none" {
+					for _, x := range buildinfo.Settings {
+						fmt.Fprintf(os.Stderr, "    %v: %v\n", x.Key, x.Value)
+					}
+				}
+			}
 			fmt.Fprintf(os.Stderr, ferr.Message)
 			os.Exit(2)
 		}
