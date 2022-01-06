@@ -151,7 +151,7 @@ func appendJSON(buf *bytes.Buffer, js map[string]any) error {
 // appendKV adds to provided key and value to the map.
 func appendKV(js map[string]any, key, value []byte) {
 	f, err := strconv.ParseFloat(string(value), 64)
-	if err == nil && !math.IsNaN(f) { // NaN can't be marshaled to JSON, causing problems later.
+	if err == nil && !math.IsNaN(f) && !math.IsInf(f, 0) { // NaN and Inf can't be marshaled to JSON, causing problems later.
 		js[string(key)] = f
 		return
 	}

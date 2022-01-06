@@ -87,6 +87,30 @@ func TestUnmarshalText(t *testing.T) {
 				NLines: 1,
 			},
 		},
+		{
+			name:  "key with NaN value",
+			input: "\xffkey\x00NaN\x00",
+			want: JSONLogs{
+				Data:   []byte(`{"key":"NaN"}`),
+				NLines: 1,
+			},
+		},
+		{
+			name:  "key with Inf value",
+			input: "\xffkey\x00Inf\x00",
+			want: JSONLogs{
+				Data:   []byte(`{"key":"Inf"}`),
+				NLines: 1,
+			},
+		},
+		{
+			name:  "key with -Inf value",
+			input: "\xffkey\x00-Inf\x00",
+			want: JSONLogs{
+				Data:   []byte(`{"key":"-Inf"}`),
+				NLines: 1,
+			},
+		},
 	}
 
 	for _, test := range testData {
