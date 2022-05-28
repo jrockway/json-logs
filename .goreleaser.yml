@@ -45,7 +45,8 @@ archives:
           - jlog
       format: binary
       wrap_in_directory: false
-      name_template: "jlog_v{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+      name_template: |
+          jlog_v{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}{{ with .Mips }}_{{ . }}{{ end }}{{ if not (eq .Amd64 "v2") }}{{ .Amd64 }}{{ end }}
 checksum:
     name_template: "checksums.txt"
 snapshot:
