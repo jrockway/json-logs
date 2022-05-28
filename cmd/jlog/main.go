@@ -59,10 +59,8 @@ func printVersion(w io.Writer) {
 	fmt.Fprintf(w, "Version %s (%s) built on %s by %s\n", version, commit, date, builtBy)
 	if buildinfo, ok := debug.ReadBuildInfo(); ok {
 		fmt.Fprintf(w, "    go: %v\n", buildinfo.GoVersion)
-		if commit == "none" {
-			for _, x := range buildinfo.Settings {
-				fmt.Fprintf(w, "    %v: %v\n", x.Key, x.Value)
-			}
+		for _, x := range buildinfo.Settings {
+			fmt.Fprintf(w, "    %v: %v\n", x.Key, x.Value)
 		}
 	}
 }
