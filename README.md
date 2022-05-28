@@ -56,6 +56,7 @@ Here's the `--help` message:
       -M, --no-color         Disable the use of color. [$JLOG_FORCE_MONOCHROME]
       -C, --no-monochrome    Force the use of color. Note: the short flag will change in a future release.
       --profile=             If set, collect a CPU profile and write it to this file.
+      -v, --version          Print version information and exit.
 
     Help Options:
       -h, --help             Show this help message

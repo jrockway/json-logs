@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -42,6 +43,8 @@ type general struct {
 	NoColor      bool   `short:"M" long:"no-color" description:"Disable the use of color." env:"JLOG_FORCE_MONOCHROME"`
 	NoMonochrome bool   `short:"C" long:"no-monochrome" description:"Force the use of color.  Note: the short flag will change in a future release." ENV:"JLOG_FORCE_COLOR"`
 	Profile      string `long:"profile" description:"If set, collect a CPU profile and write it to this file."`
+
+	Version bool `short:"v" long:"version" description:"Print version information and exit."`
 }
 
 type input struct {
@@ -49,6 +52,19 @@ type input struct {
 	LevelKey     string `long:"levelkey" description:"JSON key that holds the log level." env:"JLOG_LEVEL_KEY"`
 	TimestampKey string `long:"timekey" description:"JSON key that holds the log timestamp." env:"JLOG_TIMESTAMP_KEY"`
 	MessageKey   string `long:"messagekey" description:"JSON key that holds the log message." env:"JLOG_MESSAGE_KEY"`
+}
+
+func printVersion(w io.Writer) {
+	fmt.Fprintf(w, "jlog - Search and pretty-print your JSON logs.\nMore info: https://github.com/jrockway/json-logs\n")
+	fmt.Fprintf(w, "Version %s (%s) built on %s by %s\n", version, commit, date, builtBy)
+	if buildinfo, ok := debug.ReadBuildInfo(); ok {
+		fmt.Fprintf(w, "    go: %v\n", buildinfo.GoVersion)
+		if commit == "none" {
+			for _, x := range buildinfo.Settings {
+				fmt.Fprintf(w, "    %v: %v\n", x.Key, x.Value)
+			}
+		}
+	}
 }
 
 func main() {
@@ -69,16 +85,7 @@ func main() {
 	extraArgs, err := fp.Parse()
 	if err != nil {
 		if ferr, ok := err.(*flags.Error); ok && ferr.Type == flags.ErrHelp {
-			fmt.Fprintf(os.Stderr, "jlog - Search and pretty-print your JSON logs.\nMore info: https://github.com/jrockway/json-logs\n")
-			fmt.Fprintf(os.Stderr, "Version %s (%s) built on %s by %s\n", version, commit, date, builtBy)
-			if buildinfo, ok := debug.ReadBuildInfo(); ok {
-				fmt.Fprintf(os.Stderr, "    built with go %v\n", buildinfo.GoVersion)
-				if commit == "none" {
-					for _, x := range buildinfo.Settings {
-						fmt.Fprintf(os.Stderr, "    %v: %v\n", x.Key, x.Value)
-					}
-				}
-			}
+			printVersion(os.Stderr)
 			fmt.Fprintf(os.Stderr, ferr.Message)
 			os.Exit(2)
 		}
@@ -88,6 +95,10 @@ func main() {
 	if len(extraArgs) > 0 {
 		fmt.Fprintf(os.Stderr, "unexpected command-line arguments after flag parsing: %v\n", extraArgs)
 		os.Exit(1)
+	}
+	if gen.Version {
+		printVersion(os.Stdout)
+		os.Exit(0)
 	}
 	var f *os.File
 	if gen.Profile != "" {
