@@ -83,5 +83,3 @@ brews:
           - jlog
       test: |
           system "#{bin}/jlog --version"
-      install: |
-          bin.install jlog
