@@ -57,6 +57,8 @@ changelog:
         exclude:
             - "^docs:"
             - "^test:"
+            - "^goreleaser:"
+            - "^README:"
 release:
     github:
         owner: jrockway
