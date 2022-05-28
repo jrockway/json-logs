@@ -21,6 +21,12 @@ builds:
           - amd64
           - arm
           - arm64
+      goarm:
+          - 6
+          - 7
+      goamd64:
+          - v2
+          - v3
       ignore:
           - goos: darwin
             goarch: arm
@@ -43,7 +49,7 @@ archives:
 checksum:
     name_template: "checksums.txt"
 snapshot:
-    name_template: "{{ .Tag }}-next"
+    name_template: "{{ slice .Tag 1 }}-next"
 changelog:
     sort: asc
     filters:
@@ -62,3 +68,19 @@ release:
     disable: false
 source:
     enabled: false
+brews:
+    - name: jlog
+      tap:
+          owner: jrockway
+          name: homebrew-tap
+      homepage: "https://github.com/jrockway/json-logs"
+      description: "Pretty-print JSON logs"
+      license: Apache-2.0
+      goarm: 6
+      goamd64: v2
+      conflicts:
+          - jlog
+      test: |
+          system "#{bin}/jlog --version"
+      install: |
+          bin.install jlog
