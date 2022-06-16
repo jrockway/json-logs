@@ -147,3 +147,13 @@ func DefaultLevelParser(in interface{}) (Level, error) {
 		return LevelUnknown, nil
 	}
 }
+
+// NoopTimeParser panics if called.
+func NoopTimeParser(in interface{}) (time.Time, error) {
+	panic("Attempt to parse time in no-op time parser")
+}
+
+// NoopLevelParser panics if called.
+func NoopLevelParser(in interface{}) (Level, error) {
+	panic("Attempt to parse level in no-op level parser")
+}

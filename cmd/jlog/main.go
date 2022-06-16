@@ -48,12 +48,15 @@ type general struct {
 }
 
 type input struct {
-	Lax          bool     `short:"l" long:"lax" description:"If true, suppress any validation errors including non-JSON log lines and missing timestamps, levels, and message.  We extract as many of those as we can, but if something is missing, the errors will be silently discarded." env:"JLOG_LAX"`
-	LevelKey     string   `long:"levelkey" description:"JSON key that holds the log level." env:"JLOG_LEVEL_KEY"`
-	TimestampKey string   `long:"timekey" description:"JSON key that holds the log timestamp." env:"JLOG_TIMESTAMP_KEY"`
-	MessageKey   string   `long:"messagekey" description:"JSON key that holds the log message." env:"JLOG_MESSAGE_KEY"`
-	DeleteKeys   []string `long:"delete" description:"JSON keys to be deleted before JQ processing and output; repeatable." env:"JLOG_DELETE_KEYS"`
-	UpgradeKeys  []string `long:"upgrade" description:"JSON key (of type object) whose fields should be merged with any other fields; good for loggers that always put structed data in a separate key; repeatable.\n--upgrade b would transform as follows: {a:'a', b:{'c':'c'}} -> {a:'a', c:'c'}" env:"JLOG_UPGRADE_KEYS"`
+	Lax            bool     `short:"l" long:"lax" description:"If true, suppress any validation errors including non-JSON log lines and missing timestamps, levels, and message.  We extract as many of those as we can, but if something is missing, the errors will be silently discarded." env:"JLOG_LAX"`
+	LevelKey       string   `long:"levelkey" description:"JSON key that holds the log level." env:"JLOG_LEVEL_KEY"`
+	NoLevelKey     bool     `long:"nolevelkey" description:"If set, don't look for a log level, and don't display levels." env:"JLOG_NO_LEVEL_KEY"`
+	TimestampKey   string   `long:"timekey" description:"JSON key that holds the log timestamp." env:"JLOG_TIMESTAMP_KEY"`
+	NoTimestampKey bool     `long:"notimekey" description:"If set, don't look for a time, and don't display times." env:"JLOG_NO_TIMESTAMP_KEY"`
+	MessageKey     string   `long:"messagekey" description:"JSON key that holds the log message." env:"JLOG_MESSAGE_KEY"`
+	NoMessageKey   bool     `long:"nomessagekey" description:"If set, don't look for a message, and don't display messages (time/level + fields only)." env:"JLOG_NO_MESSAGE_KEY"`
+	DeleteKeys     []string `long:"delete" description:"JSON keys to be deleted before JQ processing and output; repeatable." env:"JLOG_DELETE_KEYS"`
+	UpgradeKeys    []string `long:"upgrade" description:"JSON key (of type object) whose fields should be merged with any other fields; good for loggers that always put structed data in a separate key; repeatable.\n--upgrade b would transform as follows: {a:'a', b:{'c':'c'}} -> {a:'a', c:'c'}" env:"JLOG_UPGRADE_KEYS"`
 }
 
 func printVersion(w io.Writer) {
@@ -166,14 +169,25 @@ func main() {
 	ins := &parse.InputSchema{
 		Strict: !in.Lax,
 	}
-	if k := in.LevelKey; k != "" {
+	if in.NoLevelKey {
+		ins.LevelKey = ""
+		ins.LevelFormat = parse.NoopLevelParser
+		ins.NoLevelKey = true
+	} else if k := in.LevelKey; k != "" {
 		ins.LevelKey = k
 		ins.LevelFormat = parse.DefaultLevelParser
 	}
-	if k := in.MessageKey; k != "" {
+	if in.NoMessageKey {
+		ins.MessageKey = ""
+		ins.NoMessageKey = true
+	} else if k := in.MessageKey; k != "" {
 		ins.MessageKey = k
 	}
-	if k := in.TimestampKey; k != "" {
+	if in.NoTimestampKey {
+		ins.TimeKey = ""
+		ins.TimeFormat = parse.NoopTimeParser
+		ins.NoTimeKey = true
+	} else if k := in.TimestampKey; k != "" {
 		ins.TimeKey = k
 		ins.TimeFormat = parse.DefaultTimeParser
 	}

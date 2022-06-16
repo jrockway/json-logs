@@ -37,8 +37,11 @@ Here's the `--help` message:
       -l, --lax              If true, suppress any validation errors including non-JSON log lines and missing timestamps, levels, and message.  We extract as many of those as we can, but if something is missing,
                              the errors will be silently discarded. [$JLOG_LAX]
           --levelkey=        JSON key that holds the log level. [$JLOG_LEVEL_KEY]
+          --nolevelkey       If set, don't look for a log level, and don't display levels. [$JLOG_NO_LEVEL_KEY]
           --timekey=         JSON key that holds the log timestamp. [$JLOG_TIMESTAMP_KEY]
+          --notimekey        If set, don't look for a time, and don't display times. [$JLOG_NO_TIMESTAMP_KEY]
           --messagekey=      JSON key that holds the log message. [$JLOG_MESSAGE_KEY]
+          --notimekey        If set, don't look for a time, and don't display times. [$JLOG_NO_TIMESTAMP_KEY]
           --delete=          JSON keys to be deleted before JQ processing and output; repeatable. [$JLOG_DELETE_KEYS]
           --upgrade=         JSON key (of type object) whose fields should be merged with any other fields; good for loggers that always put structed data in a separate key; repeatable.
                              --upgrade b would transform as follows: {a:'a', b:{'c':'c'}} -> {a:'a', c:'c'} [$JLOG_UPGRADE_KEYS]

@@ -49,6 +49,10 @@ type InputSchema struct {
 	LevelFormat LevelParser // How to turn the value of the level key into a Level.
 	MessageKey  string      // The name of the key that holds the main log message.
 
+	NoTimeKey    bool // If set, suppress any time handling.
+	NoLevelKey   bool // If set, suppress any level handling.
+	NoMessageKey bool // If set, suppress any message handling.
+
 	// If true, print an error when non-JSON lines appear in the input.  If false, treat them
 	// as normal messages with as much information extracted as possible.
 	Strict bool
@@ -94,6 +98,8 @@ type OutputSchema struct {
 	Formatter      OutputFormatter  // Actually does the formatting.
 	EmitErrorFn    func(msg string) // A function that sees all errors.
 	state          State            // state carries context between lines
+
+	suppressionConfigured, noTime, noLevel, noMessage bool
 }
 
 // EmitError prints any internal errors, so that log lines are not silently ignored if they are
@@ -314,7 +320,13 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 				return nil
 			}
 
-			// Emit a line to the buffer.
+			// Emit a line to the output buffer.
+			if !outs.suppressionConfigured {
+				outs.noTime = ins.NoTimeKey
+				outs.noLevel = ins.NoLevelKey
+				outs.noMessage = ins.NoMessageKey
+				outs.suppressionConfigured = true
+			}
 			outs.Emit(&l, buf)
 
 			// Copying the buffer to the output writer is handled in defer.
@@ -336,6 +348,12 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 // guessSchema tries to guess the schema if one has not been explicitly configured.
 func (s *InputSchema) guessSchema(l *line) {
 	if s.TimeKey != "" || s.LevelKey != "" || s.MessageKey != "" {
+		// Explicitly turn off guessing, as per the docs.
+		return
+	}
+	if s.NoTimeKey || s.NoLevelKey || s.NoMessageKey {
+		// We can guess the schema in the presence of these options, but we currently don't
+		// have any such schemas.
 		return
 	}
 	has := func(key string) bool {
@@ -435,38 +453,44 @@ func (s *InputSchema) ReadLine(l *line) error {
 		}
 	}
 	s.guessSchema(l)
-	if raw, ok := l.fields[s.TimeKey]; s.TimeFormat != nil && ok {
-		t, err := s.TimeFormat(raw)
-		if err != nil {
-			pushError(fmt.Errorf("parse time %T(%v) in key %q: %w", raw, raw, s.TimeKey, err))
+	if !s.NoTimeKey {
+		if raw, ok := l.fields[s.TimeKey]; s.TimeFormat != nil && ok {
+			t, err := s.TimeFormat(raw)
+			if err != nil {
+				pushError(fmt.Errorf("parse time %T(%v) in key %q: %w", raw, raw, s.TimeKey, err))
+			} else {
+				delete(l.fields, s.TimeKey)
+				l.time = t
+			}
 		} else {
-			delete(l.fields, s.TimeKey)
-			l.time = t
+			pushError(fmt.Errorf("no time key %q in incoming log", s.TimeKey))
 		}
-	} else {
-		pushError(fmt.Errorf("no time key %q in incoming log", s.TimeKey))
 	}
-	if msg, ok := l.fields[s.MessageKey]; ok {
-		switch x := msg.(type) {
-		case string:
-			l.msg = x
-			delete(l.fields, s.MessageKey)
-		default:
-			l.msg = string(l.raw)
-			pushError(fmt.Errorf("message key %q contains non-string data (%q of type %T)", s.MessageKey, msg, msg))
-		}
-	} else {
-		pushError(fmt.Errorf("no message key %q in incoming log", s.MessageKey))
-	}
-	if lvl, ok := l.fields[s.LevelKey]; s.LevelFormat != nil && ok {
-		if parsed, err := s.LevelFormat(lvl); err != nil {
-			pushError(fmt.Errorf("level key %q: %w", s.LevelKey, err))
+	if !s.NoMessageKey {
+		if msg, ok := l.fields[s.MessageKey]; ok {
+			switch x := msg.(type) {
+			case string:
+				l.msg = x
+				delete(l.fields, s.MessageKey)
+			default:
+				l.msg = string(l.raw)
+				pushError(fmt.Errorf("message key %q contains non-string data (%q of type %T)", s.MessageKey, msg, msg))
+			}
 		} else {
-			l.lvl = parsed
-			delete(l.fields, s.LevelKey)
+			pushError(fmt.Errorf("no message key %q in incoming log", s.MessageKey))
 		}
-	} else {
-		pushError(fmt.Errorf("no level key %q in incoming log", s.LevelKey))
+	}
+	if !s.NoLevelKey {
+		if lvl, ok := l.fields[s.LevelKey]; s.LevelFormat != nil && ok {
+			if parsed, err := s.LevelFormat(lvl); err != nil {
+				pushError(fmt.Errorf("level key %q: %w", s.LevelKey, err))
+			} else {
+				l.lvl = parsed
+				delete(l.fields, s.LevelKey)
+			}
+		} else {
+			pushError(fmt.Errorf("no level key %q in incoming log", s.LevelKey))
+		}
 	}
 	for _, name := range s.UpgradeKeys {
 		raw, ok := l.fields[name]
@@ -495,46 +519,55 @@ func (s *InputSchema) ReadLine(l *line) error {
 // Emit emits a formatted line to the provided buffer.  The provided line object may not be used
 // again until reinitialized.
 func (s *OutputSchema) Emit(l *line, w *bytes.Buffer) {
+	var needSpace bool
+
 	// Level.
-	s.Formatter.FormatLevel(&s.state, l.lvl, w)
-	w.WriteString(" ")
+	if !s.noLevel {
+		s.Formatter.FormatLevel(&s.state, l.lvl, w)
+		w.WriteString(" ")
+	}
 
 	// Time.
-	s.Formatter.FormatTime(&s.state, l.time, w)
-	w.WriteString(" ")
+	if !s.noTime {
+		s.Formatter.FormatTime(&s.state, l.time, w)
+		w.WriteString(" ")
+	}
 
 	// Message.
-	s.Formatter.FormatMessage(&s.state, l.msg, l.highlight, w)
+	if !s.noMessage {
+		s.Formatter.FormatMessage(&s.state, l.msg, l.highlight, w)
+		needSpace = true
+	}
 
 	seenFieldsThisIteration := make(map[string]struct{})
+	write := func(k string, v interface{}) {
+		if needSpace {
+			w.WriteString(" ")
+		}
+		seenFieldsThisIteration[k] = struct{}{}
+		delete(l.fields, k)
+		s.Formatter.FormatField(&s.state, k, v, w)
+		needSpace = true
+	}
 
 	// Fields the user explicitly wants to see.
 	for _, k := range s.PriorityFields {
 		if v, ok := l.fields[k]; ok {
-			seenFieldsThisIteration[k] = struct{}{}
-			w.WriteString(" ")
-			delete(l.fields, k)
-			s.Formatter.FormatField(&s.state, k, v, w)
+			write(k, v)
 		}
 	}
 
 	// Fields we've seen on past lines.
 	for _, k := range s.state.seenFields {
 		if v, ok := l.fields[k]; ok {
-			seenFieldsThisIteration[k] = struct{}{}
-			w.WriteString(" ")
-			delete(l.fields, k)
-			s.Formatter.FormatField(&s.state, k, v, w)
+			write(k, v)
 		}
 	}
 
 	// Any new fields.
 	for k, v := range l.fields {
-		seenFieldsThisIteration[k] = struct{}{}
-		w.WriteString(" ")
+		write(k, v)
 		s.state.seenFields = append(s.state.seenFields, k)
-		delete(l.fields, k)
-		s.Formatter.FormatField(&s.state, k, v, w)
 	}
 
 	for k := range s.state.lastFields {

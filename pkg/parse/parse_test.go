@@ -309,6 +309,69 @@ func TestRead(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:  "log without time",
+			s:     modifyBasicSchema(func(s *InputSchema) { s.TimeKey = ""; s.NoTimeKey = true; s.TimeFormat = NoopTimeParser }),
+			input: `{"l":"info","m":"test"}`,
+			want: &line{
+				lvl: LevelInfo,
+				msg: "test",
+			},
+		},
+		{
+			name:  "log without time, but time supplied",
+			s:     modifyBasicSchema(func(s *InputSchema) { s.NoTimeKey = true; s.TimeFormat = NoopTimeParser }),
+			input: `{"t":1,"l":"info","m":"test"}`,
+			want: &line{
+				lvl: LevelInfo,
+				msg: "test",
+				fields: map[string]interface{}{
+					"t": float64(1),
+				},
+			},
+		},
+		{
+			name:  "log without level",
+			s:     modifyBasicSchema(func(s *InputSchema) { s.LevelKey = ""; s.NoLevelKey = true; s.LevelFormat = NoopLevelParser }),
+			input: `{"t":1,"m":"test"}`,
+			want: &line{
+				time: time.Unix(1, 0),
+				msg:  "test",
+			},
+		},
+		{
+			name:  "log without level, but level supplied",
+			s:     modifyBasicSchema(func(s *InputSchema) { s.NoLevelKey = true; s.LevelFormat = NoopLevelParser }),
+			input: `{"t":1,"l":"info","m":"test"}`,
+			want: &line{
+				time: time.Unix(1, 0),
+				msg:  "test",
+				fields: map[string]interface{}{
+					"l": "info",
+				},
+			},
+		},
+		{
+			name:  "log without message",
+			s:     modifyBasicSchema(func(s *InputSchema) { s.MessageKey = ""; s.NoMessageKey = true }),
+			input: `{"t":1,"l":"info"}`,
+			want: &line{
+				time: time.Unix(1, 0),
+				lvl:  LevelInfo,
+			},
+		},
+		{
+			name:  "log without message, but message supplied",
+			s:     modifyBasicSchema(func(s *InputSchema) { s.NoMessageKey = true }),
+			input: `{"t":1,"l":"info","m":"test"}`,
+			want: &line{
+				time: time.Unix(1, 0),
+				lvl:  LevelInfo,
+				fields: map[string]interface{}{
+					"m": "test",
+				},
+			},
+		},
 
 		// Auto-guess tests
 		{
@@ -856,13 +919,42 @@ func TestReadLog(t *testing.T) {
 			wantErrs:     nil,
 			wantFinalErr: nil,
 		},
+		{
+			name: "log without time, level, and message",
+			r:    strings.NewReader(`{"t":1,"l":"info","m":"hi","a":"value"}` + "\n" + `{"a":"value","t":1}` + "\n{}\n"),
+			w:    new(bytes.Buffer),
+			is: modifyBasicSchema(func(s *InputSchema) {
+				s.TimeFormat = NoopTimeParser
+				s.LevelFormat = NoopLevelParser
+				s.NoTimeKey = true
+				s.NoLevelKey = true
+				s.NoMessageKey = true
+			}),
+			wantSummary:  Summary{Lines: 3, Errors: 0},
+			wantOutput:   "{F:A:value} {F:T:1} {F:L:info} {F:M:hi}\n{F:A:<same>} {F:T:<same>}\n\n",
+			wantErrs:     nil,
+			wantFinalErr: nil,
+		},
+		{
+			name: "log without level",
+			r:    strings.NewReader(`{"t":1,"l":"info","m":"line 1","a":"value"}` + "\n" + `{"a":"value","t":2,"m":"line 2"}` + "\n" + `{"t":3,"m":"line 3"}` + "\n"),
+			w:    new(bytes.Buffer),
+			is: modifyBasicSchema(func(s *InputSchema) {
+				s.LevelFormat = NoopLevelParser
+				s.NoLevelKey = true
+			}),
+			wantSummary:  Summary{Lines: 3, Errors: 0},
+			wantOutput:   "{TS:1} {MSG:line 1} {F:A:value} {F:L:info}\n{TS:2} {MSG:line 2} {F:A:<same>}\n{TS:3} {MSG:line 3}\n",
+			wantErrs:     nil,
+			wantFinalErr: nil,
+		},
 	}
 	for _, test := range testData {
 		var gotErrs []error
 		os := &OutputSchema{
 			Formatter:      &testFormatter{},
 			EmitErrorFn:    func(x string) { gotErrs = append(gotErrs, errors.New(x)) },
-			PriorityFields: []string{"a"},
+			PriorityFields: []string{"a", "t", "l", "m"},
 			state:          State{lastFields: make(map[string][]byte)},
 		}
 
