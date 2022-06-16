@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,10 +39,12 @@ func TestLoggers(t *testing.T) {
 	exampleObject := map[string]interface{}{"foo": "bar"}
 	exampleError := errors.New("whoa")
 	testData := []struct {
-		name string
-		skip string
-		ins  *parse.InputSchema
-		f    func(buf *bytes.Buffer)
+		name              string
+		skip              string
+		wantMessagePrefix string
+		wantLineSuffix    string
+		ins               *parse.InputSchema
+		f                 func(buf *bytes.Buffer)
 	}{
 		{
 			name: "zap",
@@ -59,7 +62,7 @@ func TestLoggers(t *testing.T) {
 				l := zap.New(core)
 				l.Info("line 1")
 				l.Info("line 2", zap.String("string", "value"), zap.Int("int", 42), zap.Any("object", exampleObject))
-				l.Info("line 3", zap.Error(exampleError))
+				l.Error("line 3", zap.Error(exampleError))
 			},
 		},
 		{
@@ -80,7 +83,7 @@ func TestLoggers(t *testing.T) {
 				}
 				l.Info("line 1")
 				l.WithField("string", "value").WithField("int", 42).WithField("object", exampleObject).Info("line 2")
-				l.WithError(exampleError).Info("line 3")
+				l.WithError(exampleError).Error("line 3")
 			},
 		},
 		{
@@ -101,7 +104,7 @@ func TestLoggers(t *testing.T) {
 				}
 				l.Info("line 1")
 				l.WithField("string", "value").WithField("int", 42).WithField("object", exampleObject).Info("line 2")
-				l.WithError(exampleError).Info("line 3")
+				l.WithError(exampleError).Error("line 3")
 			},
 		},
 		{
@@ -129,12 +132,11 @@ func TestLoggers(t *testing.T) {
 				}
 				l.Info("line 1")
 				l.WithField("string", "value").WithField("int", 42).WithField("object", exampleObject).Info("line 2")
-				l.WithError(exampleError).Info("line 3")
+				l.WithError(exampleError).Error("line 3")
 			},
 		},
 		{
 			name: "lager/pretty",
-			skip: "we can't handle the extra 'test.' appended to each message",
 			ins: &parse.InputSchema{
 				LevelKey:    "level",
 				MessageKey:  "message",
@@ -142,18 +144,20 @@ func TestLoggers(t *testing.T) {
 				LevelFormat: parse.DefaultLevelParser,
 				TimeFormat:  parse.DefaultTimeParser,
 				Strict:      true,
+				UpgradeKeys: []string{"data"},
 			},
+			wantMessagePrefix: "test.",
+			wantLineSuffix:    " source:test",
 			f: func(buf *bytes.Buffer) {
 				l := lager.NewLogger("test")
 				l.RegisterSink(lager.NewPrettySink(buf, lager.DEBUG))
 				l.Info("line 1")
-				l.Info("line 2", lager.Data{"int": 42, "object": exampleObject})
+				l.Info("line 2", lager.Data{"string": "value", "int": 42, "object": exampleObject})
 				l.Error("line 3", exampleError)
 			},
 		},
 		{
 			name: "lager",
-			skip: "we can't handle the extra 'test.' appended to each message",
 			ins: &parse.InputSchema{
 				LevelKey:    "log_level",
 				MessageKey:  "message",
@@ -161,12 +165,15 @@ func TestLoggers(t *testing.T) {
 				LevelFormat: parse.LagerLevelParser,
 				TimeFormat:  parse.StrictUnixTimeParser,
 				Strict:      true,
+				UpgradeKeys: []string{"data"},
 			},
+			wantMessagePrefix: "test.",
+			wantLineSuffix:    " source:test",
 			f: func(buf *bytes.Buffer) {
 				l := lager.NewLogger("test")
 				l.RegisterSink(lager.NewWriterSink(buf, lager.DEBUG))
 				l.Info("line 1")
-				l.Info("line 2", lager.Data{"int": 42, "object": exampleObject})
+				l.Info("line 2", lager.Data{"string": "value", "int": 42, "object": exampleObject})
 				l.Error("line 3", exampleError)
 			},
 		},
@@ -190,10 +197,10 @@ func TestLoggers(t *testing.T) {
 				// var log = bunyan.createLogger({ name: "test" });
 				// log.info("line 1");
 				// log.info({ string: "value", int: 42, object: { foo: "bar" } }, "line 2");
-				// log.info({ error: "whoa" }, "line 3");
+				// log.error({ error: "whoa" }, "line 3");
 				buf.WriteString(`{"level":30,"msg":"line 1","time":"2021-03-09T17:44:26.203Z","v":0}
 {"level":30,"string":"value","int":42,"object":{"foo":"bar"},"msg":"line 2","time":"2021-03-09T17:44:26.204Z","v":0}
-{"level":30,"error":"whoa","msg":"line 3","time":"2021-03-09T17:44:26.204Z","v":0}
+{"level":50,"error":"whoa","msg":"line 3","time":"2021-03-09T17:44:26.204Z","v":0}
 `)
 			},
 		},
@@ -203,17 +210,17 @@ func TestLoggers(t *testing.T) {
 		DefaultOutputFormatter: &parse.DefaultOutputFormatter{
 			Aurora:               aurora.NewAurora(false),
 			AbsoluteTimeFormat:   "",
-			ElideDuplicateFields: true,
+			ElideDuplicateFields: false,
 		},
 	}
 	outs := &parse.OutputSchema{
-		PriorityFields: []string{"error", "string", "int", "object"},
+		PriorityFields: []string{"error", "string", "int", "object", "source"},
 		Formatter:      f,
 	}
-	want := `
+	golden := `
 INFO  1 ok line 1
 INFO  2 ok line 2 string:value int:42 object:{"foo":"bar"}
-INFO  3 ok line 3 error:whoa
+ERROR 3 ok line 3 error:whoa
 `[1:]
 	for _, test := range testData {
 		subTests := map[string]*parse.InputSchema{
@@ -230,6 +237,15 @@ INFO  3 ok line 3 error:whoa
 				inputCopy := *input
 				if _, err := parse.ReadLog(input, output, ins, outs, nil); err != nil {
 					t.Fatalf("readlog: %v", err)
+				}
+				want := golden
+				if p := test.wantMessagePrefix; p != "" {
+					for _, msg := range []string{"line 1", "line 2", "line 3"} {
+						want = strings.Replace(want, msg, p+msg, 1)
+					}
+				}
+				if s := test.wantLineSuffix; s != "" {
+					want = strings.ReplaceAll(want, "\n", s+"\n")
 				}
 				if test.skip != "" {
 					t.Logf("skipped test:\noutput:\n%s", output.String())

@@ -53,9 +53,13 @@ type InputSchema struct {
 	// as normal messages with as much information extracted as possible.
 	Strict bool
 
-	// DeleteKeys contains a list of keys to delete; used when the log lines contain version
+	// DeleteKeys is a list of keys to delete; used when the log lines contain version
 	// information that is used for guessing the schema.
 	DeleteKeys []string
+
+	// UpgradeKeys is a list of keys to merge into the raw data.  For example, lager puts
+	// everything in the "data" key.
+	UpgradeKeys []string
 }
 
 // OutputFormatter describes an object that actually does the output formatting.  Methods take a
@@ -393,6 +397,7 @@ func (s *InputSchema) guessSchema(l *line) {
 		s.LevelKey = "level"
 		s.LevelFormat = DefaultLevelParser
 		s.MessageKey = "message"
+		s.UpgradeKeys = append(s.UpgradeKeys, "data")
 		return
 	}
 	if len(l.fields) == 5 && has("timestamp") && has("log_level") && has("message") && has("data") && has("source") {
@@ -402,6 +407,7 @@ func (s *InputSchema) guessSchema(l *line) {
 		s.LevelKey = "log_level"
 		s.LevelFormat = LagerLevelParser
 		s.MessageKey = "message"
+		s.UpgradeKeys = append(s.UpgradeKeys, "data")
 		return
 	}
 }
@@ -461,6 +467,24 @@ func (s *InputSchema) ReadLine(l *line) error {
 		}
 	} else {
 		pushError(fmt.Errorf("no level key %q in incoming log", s.LevelKey))
+	}
+	for _, name := range s.UpgradeKeys {
+		raw, ok := l.fields[name]
+		if !ok {
+			// Skip upgrade if the key is absent.
+			continue
+		}
+		toMerge, ok := raw.(map[string]interface{})
+		if ok {
+			// Delete original first, so that foo:{foo:42} will overwrite to foo:42,
+			// rather than {}.
+			delete(l.fields, name)
+			for k, v := range toMerge {
+				l.fields[k] = v
+			}
+		} else if s.Strict {
+			pushError(fmt.Errorf("upgrade key %q: invalid data type: want map[string]interface{}, got %T", name, raw))
+		}
 	}
 	for _, k := range s.DeleteKeys {
 		delete(l.fields, k)

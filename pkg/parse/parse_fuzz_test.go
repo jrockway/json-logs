@@ -142,7 +142,7 @@ func FuzzEmit(f *testing.F) {
 		if byts[len(byts)-1] != '\n' {
 			t.Fatal("no trailing newline")
 		}
-		wantMsg := strings.Replace(msg, "\n", "↩", -1)
+		wantMsg := cleanupNewlines(msg)
 		if !bytes.Contains(byts, []byte(wantMsg)) {
 			t.Fatal("message not in output")
 		}

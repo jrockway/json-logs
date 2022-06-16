@@ -42,6 +42,12 @@ var (
 	}
 )
 
+func modifyBasicSchema(f func(s *InputSchema)) *InputSchema {
+	basic := *basicSchema
+	f(&basic)
+	return &basic
+}
+
 type matchingError struct{ re *regexp.Regexp }
 
 func (e *matchingError) Error() string { return "match /" + e.re.String() + "/" }
@@ -229,6 +235,83 @@ func TestRead(t *testing.T) {
 			err: Match("invalid float64\\(42\\) for log level"),
 		},
 		{
+			name:  "valid upgrade",
+			s:     modifyBasicSchema(func(s *InputSchema) { s.UpgradeKeys = []string{"upgrade"} }),
+			input: `{"t":1,"l":"info","m":"test","existed":true,"overwritten":"nope","upgrade":{"key":"value","num":42.1,"overwritten":true}}`,
+			want: &line{
+				time: time.Unix(1, 0),
+				lvl:  LevelInfo,
+				msg:  "test",
+				fields: map[string]interface{}{
+					"existed":     true,
+					"key":         "value",
+					"num":         float64(42.1),
+					"overwritten": true,
+				},
+			},
+		},
+		{
+			name:  "valid upgrade, overwrite self",
+			s:     modifyBasicSchema(func(s *InputSchema) { s.UpgradeKeys = []string{"upgrade"} }),
+			input: `{"t":1,"l":"info","m":"test","existed":true,"upgrade":{"upgrade":"hello"}}`,
+			want: &line{
+				time: time.Unix(1, 0),
+				lvl:  LevelInfo,
+				msg:  "test",
+				fields: map[string]interface{}{
+					"existed": true,
+					"upgrade": "hello",
+				},
+			},
+		},
+		{
+			name:  "valid upgrade, but nothing to upgrade",
+			s:     modifyBasicSchema(func(s *InputSchema) { s.UpgradeKeys = []string{"upgrade"} }),
+			input: `{"t":1,"l":"info","m":"test","existed":true,"overwritten":"nope"}`,
+			want: &line{
+				time: time.Unix(1, 0),
+				lvl:  LevelInfo,
+				msg:  "test",
+				fields: map[string]interface{}{
+					"existed":     true,
+					"overwritten": "nope",
+				},
+			},
+		},
+		{
+			name:  "invalid upgrade",
+			s:     modifyBasicSchema(func(s *InputSchema) { s.UpgradeKeys = []string{"upgrade"} }),
+			input: `{"t":1,"l":"info","m":"test","existed":true,"overwritten":"nope","upgrade":["foo"]}`,
+			want: &line{
+				time: time.Unix(1, 0),
+				lvl:  LevelInfo,
+				msg:  "test",
+				fields: map[string]interface{}{
+					"existed":     true,
+					"overwritten": "nope",
+					"upgrade":     []interface{}{"foo"},
+				},
+			},
+			err: Match(`upgrade key "upgrade": invalid data type.*got \[\]`),
+		},
+		{
+			name:  "invalid upgrade, lax",
+			s:     modifyBasicSchema(func(s *InputSchema) { s.Strict = false; s.UpgradeKeys = []string{"upgrade"} }),
+			input: `{"t":1,"l":"info","m":"test","existed":true,"overwritten":"nope","upgrade":["foo"]}`,
+			want: &line{
+				time: time.Unix(1, 0),
+				lvl:  LevelInfo,
+				msg:  "test",
+				fields: map[string]interface{}{
+					"existed":     true,
+					"overwritten": "nope",
+					"upgrade":     []interface{}{"foo"},
+				},
+			},
+		},
+
+		// Auto-guess tests
+		{
 			name:  "auto-guess zap",
 			s:     &InputSchema{Strict: true},
 			input: `{"ts":1,"msg":"hi","level":"info","extra":"is here"}`,
@@ -284,7 +367,7 @@ func TestRead(t *testing.T) {
 				time:   time.Unix(1, 1e6),
 				lvl:    LevelInfo,
 				msg:    `hi`,
-				fields: map[string]interface{}{"source": "test", "data": map[string]interface{}{"extra": "is here"}},
+				fields: map[string]interface{}{"source": "test", "extra": "is here"},
 			},
 			err: nil,
 		},
@@ -296,7 +379,7 @@ func TestRead(t *testing.T) {
 				time:   time.Unix(1, 1e8),
 				lvl:    LevelInfo,
 				msg:    `hi`,
-				fields: map[string]interface{}{"source": "test", "data": map[string]interface{}{"extra": "is here"}},
+				fields: map[string]interface{}{"source": "test", "extra": "is here"},
 			},
 			err: nil,
 		},

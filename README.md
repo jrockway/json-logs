@@ -39,6 +39,9 @@ Here's the `--help` message:
           --levelkey=        JSON key that holds the log level. [$JLOG_LEVEL_KEY]
           --timekey=         JSON key that holds the log timestamp. [$JLOG_TIMESTAMP_KEY]
           --messagekey=      JSON key that holds the log message. [$JLOG_MESSAGE_KEY]
+          --delete=          JSON keys to be deleted before JQ processing and output; repeatable. [$JLOG_DELETE_KEYS]
+          --upgrade=         JSON key (of type object) whose fields should be merged with any other fields; good for loggers that always put structed data in a separate key; repeatable.
+                             --upgrade b would transform as follows: {a:'a', b:{'c':'c'}} -> {a:'a', c:'c'} [$JLOG_UPGRADE_KEYS]
 
     Output Format:
           --no-elide         Disable eliding repeated fields.  By default, fields that have the same value as the line above them have their values replaced with '↑'. [$JLOG_NO_ELIDE_DUPLICATES]
@@ -71,10 +74,23 @@ taught to recognize. If your JSON log uses `foo` as the level, `bar` as the time
 message, like: `{"foo":"info", "bar":"2022-01-01T00:00:00.123", "baz":"information!"}`, then
 `jlog --levelkey=foo --timekey=bar --messagekey=baz` will allow jlog to properly format those logs.
 
+There is some logic to guess the log format based on the first line. If this yields incorrect
+results, file a bug, but setting any of `--levelkey`, `--timekey`, or `--messagekey` will completely
+disable auto-guessing.
+
+Some loggers put all structured data into one key; you can merge that key's values into the main set
+of fields with `--upgrade <key>`. This makes eliding of repeated fields work for that log format.
+Logs that look like they were produced by a known library that does this are automatically upgraded.
+
+Some loggers output schema format information with each log message. You can delete keys like this
+with `--delete <key>`. Logs that look that look like they were produced by a known library that does
+this automatically have that key deleted. (You can do this with `del(.key)` in a JQ program, as
+well.)
+
 ## Output
 
-There are many options to control the output format. You can output times in your favorite format
-with `-t XXX`, where XXX is one of the options listed above or any
+There are many options to control the output format. You can output timestamps in your favorite
+format with `-t XXX`, where XXX is one of the options listed above or any
 [go time format string](https://pkg.go.dev/time#pkg-constants).
 
 If you want to distinguish events that happened in the same second as the previous line, use `-s`.
@@ -92,8 +108,8 @@ Into:
 
 This can sometimes make spammy logs a little easier on the eyes.
 
-You can pass `-r` to see the time difference between when the program started, and the log line.
-This is good if you don't want to do any mental math.
+You can pass `-r` to see the time difference between when the program started and the log line. This
+is good if you don't want to do any mental math.
 
 You can adjust the output timezone with the `TZ` environment variable. `TZ=America/Los_Angeles jlog`
 will print times in Pacific, for example.
@@ -110,3 +126,11 @@ You can pass a [jq](https://stedolan.github.io/jq/) program to process the input
 `jlog -e 'select($MSG | test("foo"))'` will only show messages that contain "foo" (even if a field
 contains foo). You can of course access any field in the parsed JSON log line and make selection
 decisions on that, or delete fields, or add new fields.
+
+The JQ program is run after schema detection and validation.
+
+## Highlighting
+
+The built-in jq function `highlight` will caused matched messages to display in inverse-video
+`jlog -e 'highlight(.foo == 42)'` would highlight any message where the `foo` key equals 42.
+`jlog -e 'highlight($MSG|test("abc"))'` would highlight any message that contains `"abc"`.

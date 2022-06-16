@@ -48,10 +48,12 @@ type general struct {
 }
 
 type input struct {
-	Lax          bool   `short:"l" long:"lax" description:"If true, suppress any validation errors including non-JSON log lines and missing timestamps, levels, and message.  We extract as many of those as we can, but if something is missing, the errors will be silently discarded." env:"JLOG_LAX"`
-	LevelKey     string `long:"levelkey" description:"JSON key that holds the log level." env:"JLOG_LEVEL_KEY"`
-	TimestampKey string `long:"timekey" description:"JSON key that holds the log timestamp." env:"JLOG_TIMESTAMP_KEY"`
-	MessageKey   string `long:"messagekey" description:"JSON key that holds the log message." env:"JLOG_MESSAGE_KEY"`
+	Lax          bool     `short:"l" long:"lax" description:"If true, suppress any validation errors including non-JSON log lines and missing timestamps, levels, and message.  We extract as many of those as we can, but if something is missing, the errors will be silently discarded." env:"JLOG_LAX"`
+	LevelKey     string   `long:"levelkey" description:"JSON key that holds the log level." env:"JLOG_LEVEL_KEY"`
+	TimestampKey string   `long:"timekey" description:"JSON key that holds the log timestamp." env:"JLOG_TIMESTAMP_KEY"`
+	MessageKey   string   `long:"messagekey" description:"JSON key that holds the log message." env:"JLOG_MESSAGE_KEY"`
+	DeleteKeys   []string `long:"delete" description:"JSON keys to be deleted before JQ processing and output; repeatable." env:"JLOG_DELETE_KEYS"`
+	UpgradeKeys  []string `long:"upgrade" description:"JSON key (of type object) whose fields should be merged with any other fields; good for loggers that always put structed data in a separate key; repeatable.\n--upgrade b would transform as follows: {a:'a', b:{'c':'c'}} -> {a:'a', c:'c'}" env:"JLOG_UPGRADE_KEYS"`
 }
 
 func printVersion(w io.Writer) {
@@ -174,6 +176,9 @@ func main() {
 	if k := in.TimestampKey; k != "" {
 		ins.TimeKey = k
 		ins.TimeFormat = parse.DefaultTimeParser
+	}
+	if u := in.UpgradeKeys; len(u) > 0 {
+		ins.UpgradeKeys = append(ins.UpgradeKeys, u...)
 	}
 
 	var wantColor = isatty.IsTerminal(os.Stdout.Fd())
