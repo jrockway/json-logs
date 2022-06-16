@@ -97,9 +97,11 @@ type OutputSchema struct {
 	PriorityFields []string         // PriorityFields controls which fields are printed first.
 	Formatter      OutputFormatter  // Actually does the formatting.
 	EmitErrorFn    func(msg string) // A function that sees all errors.
-	state          State            // state carries context between lines
+	BeforeContext  int              // Context lines to print before a match.
+	AfterContext   int              // Context lines to print after a match.
 
 	suppressionConfigured, noTime, noLevel, noMessage bool
+	state                                             State // state carries context between lines
 }
 
 // EmitError prints any internal errors, so that log lines are not silently ignored if they are
@@ -218,12 +220,20 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 		}
 	}
 	var sum Summary
+
+	lineBuf := new(bytes.Buffer)
 	buf := new(bytes.Buffer)
+	ctx := &context{
+		After:  outs.AfterContext,
+		Before: outs.BeforeContext,
+	}
+
 	for s.Scan() {
 		sum.Lines++
 
 		err := func() (retErr error) {
 			var addError, writeRawLine, recoverable bool
+			var filtered bool
 
 			// Adjust counters, print debugging information, flush buffers on the way
 			// out, no matter what.
@@ -232,7 +242,8 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 					sum.Errors++
 				}
 				var writeError bool
-				if buf.Len() > 0 {
+				if lineBuf.Len() > 0 {
+					ctx.Print(buf, lineBuf.String(), !filtered)
 					if _, err := buf.WriteTo(w); err != nil {
 						recoverable = false
 						writeError = true
@@ -276,7 +287,8 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 			}()
 
 			// Reset state from the last line.
-			buf.Truncate(0)
+			buf.Reset()
+			lineBuf.Reset()
 			l.raw = s.Bytes()
 			l.msg = ""
 			l.fields = make(map[string]interface{})
@@ -296,7 +308,8 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 			}
 
 			// Filter.
-			filtered, err := runJQ(jq, &l)
+			var err error
+			filtered, err = runJQ(jq, &l)
 			if err != nil {
 				addError = true
 				writeRawLine = true
@@ -317,17 +330,16 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 					writeRawLine = false
 					return fmt.Errorf("parse: %w", parseErr)
 				}
-				return nil
 			}
 
-			// Emit a line to the output buffer.
+			// Emit a line.
 			if !outs.suppressionConfigured {
 				outs.noTime = ins.NoTimeKey
 				outs.noLevel = ins.NoLevelKey
 				outs.noMessage = ins.NoMessageKey
 				outs.suppressionConfigured = true
 			}
-			outs.Emit(&l, buf)
+			outs.Emit(&l, lineBuf)
 
 			// Copying the buffer to the output writer is handled in defer.
 			if parseErr != nil {

@@ -36,12 +36,16 @@ type output struct {
 	NoSummary          bool     `long:"no-summary" description:"Suppress printing the summary at the end." env:"JLOG_NO_SUMMARY"`
 	PriorityFields     []string `long:"priority" short:"p" description:"A list of fields to show first; repeatable." env:"JLOG_PRIORITY_FIELDS" env-delim:","`
 	HighlightFields    []string `long:"highlight" short:"H" description:"A list of fields to visually distinguish; repeatable." env:"JLOG_HIGHLIGHT_FIELDS" env-delim:"," default:"err" default:"error" default:"warn" default:"warning"`
+
+	AfterContext  int `long:"after-context" short:"A" default:"0" description:"Print this many filtered lines after a non-filtered line (like grep)."`
+	BeforeContext int `long:"before-context" short:"B" default:"0" description:"Print this many filtered lines before a non-filtered line (like grep)."`
+	Context       int `long:"context" short:"C" default:"0" description:"Print this many context lines around each match (like grep)."`
 }
 
 type general struct {
 	JQ           string `short:"e" description:"A jq program to run on each record in the processed input; use this to ignore certain lines, add fields, etc.  Hint: 'select(condition)' will remove lines that don't match 'condition'."`
 	NoColor      bool   `short:"M" long:"no-color" description:"Disable the use of color." env:"JLOG_FORCE_MONOCHROME"`
-	NoMonochrome bool   `short:"C" long:"no-monochrome" description:"Force the use of color.  Note: the short flag will change in a future release." ENV:"JLOG_FORCE_COLOR"`
+	NoMonochrome bool   `short:"c" long:"no-monochrome" description:"Force the use of color." ENV:"JLOG_FORCE_COLOR"`
 	Profile      string `long:"profile" description:"If set, collect a CPU profile and write it to this file."`
 
 	Version bool `short:"v" long:"version" description:"Print version information and exit."`
@@ -220,6 +224,16 @@ func main() {
 	outs := &parse.OutputSchema{
 		Formatter:      defaultOutput,
 		PriorityFields: out.PriorityFields,
+		AfterContext:   out.Context,
+		BeforeContext:  out.Context,
+	}
+
+	// Let -A and -B override -C.
+	if a := outs.AfterContext; a > 0 {
+		outs.AfterContext = a
+	}
+	if b := outs.BeforeContext; b > 0 {
+		outs.BeforeContext = b
 	}
 
 	sigCh := make(chan os.Signal, 1)
