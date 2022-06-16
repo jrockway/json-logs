@@ -19,6 +19,9 @@ fuzz tests and live integration tests against common logging libraries.
 Grab a binary from the releases area, `chmod a+x` it, and move it to somewhere in your $PATH. Or you
 can `go install github.com/jrockway/json-logs/cmd/jlog@latest`.
 
+If you use homebrew; `brew tap jrockway/tap; brew install jrockway/tap/jlog`. (This works on OS X
+and Linux, and supports Arm64 and AMD64.)
+
 ## Use
 
 Pipe it some json-formatted logs:
