@@ -88,8 +88,14 @@ func (f *DefaultOutputFormatter) FormatTime(s *State, t time.Time, w *bytes.Buff
 	s.lastTime = t
 }
 
+func cleanupNewlines(msg string) string {
+	msg = strings.ReplaceAll(msg, "\n", "↩")
+	msg = strings.ReplaceAll(msg, "\r", "←")
+	return msg
+}
+
 func (f *DefaultOutputFormatter) FormatMessage(s *State, msg string, highlight bool, w *bytes.Buffer) {
-	msg = strings.Replace(msg, "\n", "↩", -1)
+	msg = cleanupNewlines(msg)
 	if highlight {
 		msg = f.Aurora.Inverse(msg).String()
 	}
@@ -137,6 +143,7 @@ func (f *DefaultOutputFormatter) FormatField(s *State, k string, v interface{}, 
 	var value []byte
 	switch x := v.(type) {
 	case string:
+		x = cleanupNewlines(x)
 		value = []byte(x)
 	default:
 		var err error
