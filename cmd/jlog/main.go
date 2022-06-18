@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"regexp"
 	"runtime/debug"
 	"runtime/pprof"
 	"strings"
@@ -43,7 +44,9 @@ type output struct {
 }
 
 type general struct {
-	JQ           string `short:"e" description:"A jq program to run on each record in the processed input; use this to ignore certain lines, add fields, etc.  Hint: 'select(condition)' will remove lines that don't match 'condition'."`
+	MatchRegex   string `short:"g" long:"regex" description:"A regular expression that removes lines from the output that don't match, like grep."`
+	NoMatchRegex string `short:"G" long:"no-regex" description:"A regular expression that removes lines from the output that DO match, like 'grep -v'."`
+	JQ           string `short:"e" long:"jq" description:"A jq program to run on each record in the processed input; use this to ignore certain lines, add fields, etc.  Hint: 'select(condition)' will remove lines that don't match 'condition'."`
 	NoColor      bool   `short:"M" long:"no-color" description:"Disable the use of color." env:"JLOG_FORCE_MONOCHROME"`
 	NoMonochrome bool   `short:"c" long:"no-monochrome" description:"Force the use of color." ENV:"JLOG_FORCE_COLOR"`
 	Profile      string `long:"profile" description:"If set, collect a CPU profile and write it to this file."`
@@ -59,8 +62,8 @@ type input struct {
 	NoTimestampKey bool     `long:"notimekey" description:"If set, don't look for a time, and don't display times." env:"JLOG_NO_TIMESTAMP_KEY"`
 	MessageKey     string   `long:"messagekey" description:"JSON key that holds the log message." env:"JLOG_MESSAGE_KEY"`
 	NoMessageKey   bool     `long:"nomessagekey" description:"If set, don't look for a message, and don't display messages (time/level + fields only)." env:"JLOG_NO_MESSAGE_KEY"`
-	DeleteKeys     []string `long:"delete" description:"JSON keys to be deleted before JQ processing and output; repeatable." env:"JLOG_DELETE_KEYS"`
-	UpgradeKeys    []string `long:"upgrade" description:"JSON key (of type object) whose fields should be merged with any other fields; good for loggers that always put structed data in a separate key; repeatable.\n--upgrade b would transform as follows: {a:'a', b:{'c':'c'}} -> {a:'a', c:'c'}" env:"JLOG_UPGRADE_KEYS"`
+	DeleteKeys     []string `long:"delete" description:"JSON keys to be deleted before JQ processing and output; repeatable." env:"JLOG_DELETE_KEYS" env-delim:","`
+	UpgradeKeys    []string `long:"upgrade" description:"JSON key (of type object) whose fields should be merged with any other fields; good for loggers that always put structed data in a separate key; repeatable.\n--upgrade b would transform as follows: {a:'a', b:{'c':'c'}} -> {a:'a', c:'c'}" env:"JLOG_UPGRADE_KEYS" env-delim:","`
 }
 
 func printVersion(w io.Writer) {
@@ -164,8 +167,29 @@ func main() {
 		subsecondFormt = ""
 	}
 
-	jq, err := parse.CompileJQ(gen.JQ)
-	if err != nil {
+	fsch := new(parse.FilterScheme)
+	if gen.MatchRegex != "" && gen.NoMatchRegex != "" {
+		fmt.Fprintf(os.Stderr, "cannot have both a non-empty MatchRegex and a non-empty NoMatchRegex\n")
+		os.Exit(1)
+	}
+	if rx := gen.MatchRegex; rx != "" {
+		regex, err := regexp.Compile(rx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "problem compiling MatchRegex: %v\n", err)
+			os.Exit(1)
+		}
+		fsch.MatchRegex = regex
+	}
+	if rx := gen.NoMatchRegex; rx != "" {
+		regex, err := regexp.Compile(rx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "problem compiling NoMatchRegex: %v\n", err)
+			os.Exit(1)
+		}
+		fsch.NoMatchRegex = regex
+	}
+
+	if err := fsch.AddJQ(gen.JQ); err != nil {
 		fmt.Fprintf(os.Stderr, "problem %v\n", err)
 		os.Exit(1)
 	}
@@ -247,7 +271,7 @@ func main() {
 		signal.Stop(sigCh)
 	}()
 
-	summary, err := parse.ReadLog(os.Stdin, colorable.NewColorableStdout(), ins, outs, jq)
+	summary, err := parse.ReadLog(os.Stdin, colorable.NewColorableStdout(), ins, outs, fsch)
 	if err != nil {
 		if signals := atomic.LoadInt32(&nSignals); signals < 1 || !strings.Contains(err.Error(), "file already closed") {
 			outs.EmitError(err.Error())

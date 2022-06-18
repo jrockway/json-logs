@@ -11,7 +11,6 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/itchyny/gojq"
 	"github.com/logrusorgru/aurora/v3"
 )
 
@@ -130,84 +129,11 @@ type Summary struct {
 	Filtered int
 }
 
-var DefaultVariables = []string{
-	"$TS",
-	"$RAW", "$MSG",
-	"$LVL", "$UNKNOWN", "$TRACE", "$DEBUG", "$INFO", "$WARN", "$ERROR", "$PANIC", "$DPANIC", "$FATAL",
-}
-
-func prepareVariables(l *line) []interface{} {
-	return []interface{}{
-		float64(l.time.UnixNano()) / 1e9, // $TS
-		string(l.raw), l.msg,
-		uint8(l.lvl), uint8(LevelUnknown), uint8(LevelTrace), uint8(LevelDebug), uint8(LevelInfo), uint8(LevelWarn), uint8(LevelError), uint8(LevelPanic), uint8(LevelDPanic), uint8(LevelFatal),
-	}
-}
-
-const highlightKey = "__highlight"
-
-// CompileJQ compiles the provided jq program.
-func CompileJQ(p string) (*gojq.Code, error) {
-	if p == "" {
-		return nil, nil
-	}
-	p = "def highlight($cond): . + {__highlight: $cond};\n" + p
-	q, err := gojq.Parse(p)
-	if err != nil {
-		return nil, fmt.Errorf("parsing jq program %q: %v", p, err)
-	}
-	jq, err := gojq.Compile(q, gojq.WithVariables(DefaultVariables))
-	if err != nil {
-		return nil, fmt.Errorf("compiling jq program %q: %v", p, err)
-	}
-	return jq, nil
-}
-
-// runJQ runs the provided jq program on the provided line.  It returns true if the result is empty
-// (i.e., the line should be filtered out), and an error if the output type is invalid or another
-// error occurred.
-func runJQ(jq *gojq.Code, l *line) (bool, error) {
-	if jq == nil {
-		return false, nil
-	}
-	var filtered bool
-	iter := jq.Run(l.fields, prepareVariables(l)...)
-	if result, ok := iter.Next(); ok {
-		switch x := result.(type) {
-		case map[string]interface{}:
-			if raw, ok := x[highlightKey]; ok {
-				delete(x, highlightKey)
-				if hi, ok := raw.(bool); ok {
-					l.highlight = hi
-				}
-			}
-			l.fields = x
-		case nil:
-			return false, errors.New("unexpected nil result; yield an empty map ('{}') to delete all fields")
-		case error:
-			return false, fmt.Errorf("error: %w", x)
-		case bool:
-			return false, errors.New("unexpected boolean output; did you mean to use 'select(...)'?")
-		default:
-			return false, fmt.Errorf("unexpected result type %T(%#v)", result, result)
-		}
-		if _, ok = iter.Next(); ok {
-			// We only use the first line that is output.  This can be revisited in the
-			// future.
-			return false, errors.New("unexpectedly produced more than 1 output")
-		}
-	} else {
-		filtered = true
-		l.fields = make(map[string]interface{})
-	}
-	return filtered, nil
-}
-
 // ReadLog reads a stream of JSON-formatted log lines from the provided reader according to the
 // input schema, reformatting it and writing to the provided writer according to the output schema.
 // Parse errors are handled according to the input schema.  Any other errors, not including io.EOF
 // on the reader, are returned.
-func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq *gojq.Code) (Summary, error) {
+func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, filter *FilterScheme) (Summary, error) {
 	s := bufio.NewScanner(r)
 	s.Buffer(make([]byte, 0, LineBufferSize), LineBufferSize)
 	var l line
@@ -309,18 +235,18 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, jq 
 
 			// Filter.
 			var err error
-			filtered, err = runJQ(jq, &l)
+			filtered, err = filter.Run(&l)
 			if err != nil {
 				addError = true
 				writeRawLine = true
 				recoverable = false
-				// It is questionable as to whether or not jq breaking means that we
-				// should stop processing the log entirely.  It's probably a bug in
-				// the jq program that affects every line, so the sooner we return
-				// the error, the sooner the user can fix their program.  But on the
-				// other hand, is it worth it to spend the time debugging a jq
-				// program that's only broken on one line out of a billion?
-				return fmt.Errorf("jq: %w", err)
+				// It is questionable as to whether or not a filter breaking means
+				// that we should stop processing the log entirely.  It's probably a
+				// bug in the filter that affects every line, so the sooner we
+				// return the error, the sooner the user can fix their filter.  But
+				// on the other hand, is it worth it to spend the time debugging a
+				// jq program that's only broken on one line out of a billion?
+				return fmt.Errorf("filter: %w", err)
 			}
 			if filtered {
 				sum.Filtered++

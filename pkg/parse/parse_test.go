@@ -69,13 +69,6 @@ func comperror(x, y error) bool {
 	return x.Error() == y.Error()
 }
 
-func mustJQ(prog string) *gojq.Code {
-	jq, err := CompileJQ(prog)
-	if err != nil {
-		panic(err)
-	}
-	return jq
-}
 func TestRead(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -959,7 +952,10 @@ func TestReadLog(t *testing.T) {
 		}
 
 		t.Run(test.name, func(t *testing.T) {
-			summary, err := ReadLog(test.r, test.w, test.is, os, test.jq)
+			fs := &FilterScheme{
+				JQ: test.jq,
+			}
+			summary, err := ReadLog(test.r, test.w, test.is, os, fs)
 			if diff := cmp.Diff(test.w.String(), test.wantOutput); diff != "" {
 				t.Errorf("output: %v", diff)
 			}
@@ -976,13 +972,21 @@ func TestReadLog(t *testing.T) {
 	}
 }
 
+func mustJQ(prog string) *gojq.Code {
+	jq, err := compileJQ(prog)
+	if err != nil {
+		panic(err)
+	}
+	return jq
+}
+
 func TestReadLogWithNullFormatter(t *testing.T) {
 	r := strings.NewReader(`{"level":"info","ts":12345,"msg":"foo"}` + "\n")
 	w := io.Discard
 	is := &InputSchema{Strict: false}
 	os := &OutputSchema{}
-	jq := mustJQ(".")
-	if _, err := ReadLog(r, w, is, os, jq); err != nil {
+	fs := &FilterScheme{JQ: mustJQ(".")}
+	if _, err := ReadLog(r, w, is, os, fs); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -1061,7 +1065,8 @@ func TestJQ(t *testing.T) {
 		},
 	}
 	for _, test := range testData {
-		gotFiltered, gotErr := runJQ(test.jq, test.l)
+		fs := &FilterScheme{JQ: test.jq}
+		gotFiltered, gotErr := fs.runJQ(test.l)
 		if diff := cmp.Diff(test.l, test.wantLine, cmp.AllowUnexported(line{}), cmpopts.EquateEmpty()); diff != "" {
 			t.Errorf("line: %s", diff)
 		}

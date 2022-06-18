@@ -217,6 +217,7 @@ func TestLoggers(t *testing.T) {
 		PriorityFields: []string{"error", "string", "int", "object", "source"},
 		Formatter:      f,
 	}
+	fs := &parse.FilterScheme{}
 	golden := `
 INFO  1 ok line 1
 INFO  2 ok line 2 string:value int:42 object:{"foo":"bar"}
@@ -235,7 +236,7 @@ ERROR 3 ok line 3 error:whoa
 				output := new(bytes.Buffer)
 				test.f(input)
 				inputCopy := *input
-				if _, err := parse.ReadLog(input, output, ins, outs, nil); err != nil {
+				if _, err := parse.ReadLog(input, output, ins, outs, fs); err != nil {
 					t.Fatalf("readlog: %v", err)
 				}
 				want := golden

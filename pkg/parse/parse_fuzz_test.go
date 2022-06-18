@@ -11,15 +11,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/itchyny/gojq"
 	"github.com/jrockway/json-logs/pkg/parse/internal/fuzzsupport"
 	"github.com/logrusorgru/aurora/v3"
 )
 
 // runReadLog runs ReadLog against some input, and asserts that certain expectations are met.  It's
 // used to implement FuzzReadLogs and FuzzReadLogsWithJSON.
-func runReadLog(t *testing.T, jq *gojq.Code, in []byte, expectedLines int) {
+func runReadLog(t *testing.T, fs *FilterScheme, in []byte, expectedLines int) {
 	t.Helper()
+	if fs == nil {
+		fs = new(FilterScheme)
+	}
 	inbuf := bytes.NewReader(in)
 	ins := &InputSchema{
 		Strict: false,
@@ -37,7 +39,7 @@ func runReadLog(t *testing.T, jq *gojq.Code, in []byte, expectedLines int) {
 		},
 	}
 	outbuf := new(bytes.Buffer)
-	summary, err := ReadLog(inbuf, outbuf, ins, outs, jq)
+	summary, err := ReadLog(inbuf, outbuf, ins, outs, fs)
 	if err != nil {
 		if errors.Is(err, bufio.ErrTooLong) {
 			// This is a known limit and the fuzzer likes to produce very long
