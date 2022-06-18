@@ -428,6 +428,14 @@ func (s *InputSchema) guessSchema(l *line) {
 		s.UpgradeKeys = append(s.UpgradeKeys, "data")
 		return
 	}
+	if has("ts") && has("message") && has("workerId") && has("pipelineName") {
+		// Pachyderm worker logs.
+		s.TimeKey = "ts"
+		s.TimeFormat = DefaultTimeParser // RFC3339Nano
+		s.NoLevelKey = true
+		s.MessageKey = "message"
+		return
+	}
 }
 
 // ReadLine parses a log line into the provided line object.
