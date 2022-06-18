@@ -523,19 +523,19 @@ func TestEmit(t *testing.T) {
 	tests := []struct {
 		name      string
 		state     State
-		line      *line
+		line      line
 		want      string
 		wantState State
 	}{
 
 		{
 			name: "empty",
-			line: &line{},
+			line: line{},
 			want: "{LVL:X} {TS:∅} {MSG:}\n",
 		},
 		{
 			name: "basic",
-			line: &line{
+			line: line{
 				time: time.Unix(1, 0),
 				lvl:  LevelInfo,
 				msg:  "hello, world!!",
@@ -544,7 +544,7 @@ func TestEmit(t *testing.T) {
 		},
 		{
 			name: "basic with fields",
-			line: &line{
+			line: line{
 				time: time.Unix(2, 0),
 				lvl:  LevelDebug,
 				msg:  "hi",
@@ -564,7 +564,7 @@ func TestEmit(t *testing.T) {
 		},
 		{
 			name: "basic with remembered fields",
-			line: &line{
+			line: line{
 				time: time.Unix(3, 0),
 				lvl:  LevelDebug,
 				msg:  "hi",

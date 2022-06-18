@@ -136,7 +136,7 @@ func FuzzEmit(f *testing.F) {
 			fields:    fieldMap,
 		}
 		outbuf := new(bytes.Buffer)
-		outs.Emit(l, outbuf)
+		outs.Emit(*l, outbuf)
 		byts := outbuf.Bytes()
 		if len(byts) == 0 {
 			t.Fatal("no output produced")

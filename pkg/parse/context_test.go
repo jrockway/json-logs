@@ -139,9 +139,20 @@ func TestContext(t *testing.T) {
 				After:  test.after,
 			}
 			out := new(bytes.Buffer)
-			for _, l := range test.input {
-				selected := test.match.MatchString(l)
-				ctx.Print(out, l+"\n", selected)
+			var l line // ensure that our stored pointers do enough copying
+			for _, msg := range test.input {
+				l.reset()
+				l.msg = msg
+				selected := test.match.MatchString(msg)
+				print := ctx.Print(&l, selected)
+				for _, x := range print {
+					if x.isSeparator {
+						out.WriteString("---")
+					} else {
+						out.WriteString(x.msg)
+					}
+					out.WriteByte('\n')
+				}
 			}
 
 			gotOutput := out.String()
@@ -153,7 +164,8 @@ func TestContext(t *testing.T) {
 				got = got[:len(got)-1]
 			}
 			if diff := cmp.Diff(got, test.want, cmpopts.EquateEmpty()); diff != "" {
-				t.Errorf("diff:\n%s", diff)
+				t.Errorf("output:\n  got: %v\n want: %v", got, test.want)
+				t.Logf("diff:\n%s", diff)
 			}
 		})
 	}

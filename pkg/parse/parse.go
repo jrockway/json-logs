@@ -115,12 +115,22 @@ func (s *OutputSchema) EmitError(msg string) {
 
 // line represents one log line.
 type line struct {
-	time      time.Time
-	msg       string
-	lvl       Level
-	raw       []byte
-	highlight bool
-	fields    map[string]interface{}
+	time        time.Time
+	msg         string
+	lvl         Level
+	raw         []byte
+	highlight   bool
+	fields      map[string]interface{}
+	isSeparator bool // If true, this is not a line but a separator from context.
+}
+
+func (l *line) reset() {
+	l.raw = nil
+	l.msg = ""
+	l.fields = make(map[string]interface{})
+	l.lvl = LevelUnknown
+	l.time = time.Time{}
+	l.highlight = false
 }
 
 type Summary struct {
@@ -147,7 +157,6 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, fil
 	}
 	var sum Summary
 
-	lineBuf := new(bytes.Buffer)
 	buf := new(bytes.Buffer)
 	ctx := &context{
 		After:  outs.AfterContext,
@@ -159,7 +168,6 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, fil
 
 		err := func() (retErr error) {
 			var addError, writeRawLine, recoverable bool
-			var filtered bool
 
 			// Adjust counters, print debugging information, flush buffers on the way
 			// out, no matter what.
@@ -168,8 +176,7 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, fil
 					sum.Errors++
 				}
 				var writeError bool
-				if lineBuf.Len() > 0 {
-					ctx.Print(buf, lineBuf.String(), !filtered)
+				if buf.Len() > 0 {
 					if _, err := buf.WriteTo(w); err != nil {
 						recoverable = false
 						writeError = true
@@ -214,13 +221,8 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, fil
 
 			// Reset state from the last line.
 			buf.Reset()
-			lineBuf.Reset()
+			l.reset()
 			l.raw = s.Bytes()
-			l.msg = ""
-			l.fields = make(map[string]interface{})
-			l.lvl = LevelUnknown
-			l.time = time.Time{}
-			l.highlight = false
 
 			// Parse input.
 			parseErr := ins.ReadLine(&l)
@@ -234,8 +236,7 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, fil
 			}
 
 			// Filter.
-			var err error
-			filtered, err = filter.Run(&l)
+			filtered, err := filter.Run(&l)
 			if err != nil {
 				addError = true
 				writeRawLine = true
@@ -258,14 +259,16 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, fil
 				}
 			}
 
-			// Emit a line.
-			if !outs.suppressionConfigured {
-				outs.noTime = ins.NoTimeKey
-				outs.noLevel = ins.NoLevelKey
-				outs.noMessage = ins.NoMessageKey
-				outs.suppressionConfigured = true
+			// Emit any lines that are able to be printed based on the context settings.
+			for _, toEmit := range ctx.Print(&l, !filtered) {
+				if !outs.suppressionConfigured {
+					outs.noTime = ins.NoTimeKey
+					outs.noLevel = ins.NoLevelKey
+					outs.noMessage = ins.NoMessageKey
+					outs.suppressionConfigured = true
+				}
+				outs.Emit(*toEmit, buf)
 			}
-			outs.Emit(&l, lineBuf)
 
 			// Copying the buffer to the output writer is handled in defer.
 			if parseErr != nil {
@@ -464,7 +467,13 @@ func (s *InputSchema) ReadLine(l *line) error {
 
 // Emit emits a formatted line to the provided buffer.  The provided line object may not be used
 // again until reinitialized.
-func (s *OutputSchema) Emit(l *line, w *bytes.Buffer) {
+func (s *OutputSchema) Emit(l line, w *bytes.Buffer) {
+	// Is this a line separating unrelated contexts?  If so, print a separator and do nothing else.
+	if l.isSeparator {
+		w.WriteString("---\n")
+		return
+	}
+
 	var needSpace bool
 
 	// Level.
