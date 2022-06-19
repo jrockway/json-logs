@@ -101,3 +101,19 @@ func TestLevelParsers(t *testing.T) {
 		}
 	}
 }
+
+func TestNoopParsers(t *testing.T) {
+	testData := []func(){func() { NoopTimeParser(1) }, func() { NoopLevelParser("info") }}
+	for _, test := range testData {
+		ok := func() (ok bool) {
+			defer func() {
+				ok = recover() != nil
+			}()
+			test()
+			return false
+		}()
+		if !ok {
+			t.Error("expected panic")
+		}
+	}
+}
