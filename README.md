@@ -44,7 +44,7 @@ Here's the `--help` message:
           --timekey=         JSON key that holds the log timestamp. [$JLOG_TIMESTAMP_KEY]
           --notimekey        If set, don't look for a time, and don't display times. [$JLOG_NO_TIMESTAMP_KEY]
           --messagekey=      JSON key that holds the log message. [$JLOG_MESSAGE_KEY]
-          --notimekey        If set, don't look for a time, and don't display times. [$JLOG_NO_TIMESTAMP_KEY]
+          --nomessagekey     If set, don't look for a message, and don't display messages (time/level + fields only). [$JLOG_NO_MESSAGE_KEY]
           --delete=          JSON keys to be deleted before JQ processing and output; repeatable. [$JLOG_DELETE_KEYS]
           --upgrade=         JSON key (of type object) whose fields should be merged with any other fields; good for loggers that always put structed data in a separate key; repeatable.
                              --upgrade b would transform as follows: {a:'a', b:{'c':'c'}} -> {a:'a', c:'c'} [$JLOG_UPGRADE_KEYS]
@@ -59,8 +59,13 @@ Here's the `--help` message:
           --no-summary       Suppress printing the summary at the end. [$JLOG_NO_SUMMARY]
       -p, --priority=        A list of fields to show first; repeatable. [$JLOG_PRIORITY_FIELDS]
       -H, --highlight=       A list of fields to visually distinguish; repeatable. (default: err, error, warn, warning) [$JLOG_HIGHLIGHT_FIELDS]
+      -A, --after-context=   Print this many filtered lines after a non-filtered line (like grep). (default: 0)
+      -B, --before-context=  Print this many filtered lines before a non-filtered line (like grep). (default: 0)
+      -C, --context=         Print this many context lines around each match (like grep). (default: 0)
 
     General:
+      -g, --regex=           A regular expression that removes lines from the output that don't match, like grep.
+      -G, --no-regex=        A regular expression that removes lines from the output that DO match, like 'grep -v'.
       -e=                    A jq program to run on each record in the processed input; use this to ignore certain lines, add fields, etc.  Hint: 'select(condition)' will remove lines that don't match 'condition'.
       -M, --no-color         Disable the use of color. [$JLOG_FORCE_MONOCHROME]
       -C, --no-monochrome    Force the use of color. Note: the short flag will change in a future release.
@@ -79,6 +84,10 @@ it, just set it up in your shell's init file.
 taught to recognize. If your JSON log uses `foo` as the level, `bar` as the time, and `baz` as the
 message, like: `{"foo":"info", "bar":"2022-01-01T00:00:00.123", "baz":"information!"}`, then
 `jlog --levelkey=foo --timekey=bar --messagekey=baz` will allow jlog to properly format those logs.
+
+Some logs don't have a level or a message (or a time?); use `--nolevelkey`, `--nomessagekey`, or
+`--notimekey` to allow parsing such logs in stict mode. The output will also be adjusted to not
+print fields that aren't in the input log.
 
 There is some logic to guess the log format based on the first line. If this yields incorrect
 results, file a bug, but setting any of `--levelkey`, `--timekey`, or `--messagekey` will completely
@@ -127,6 +136,18 @@ a glance.
 
 ## Filtering
 
+By default, we print every line in the input log. You can remove lines from the output with JQ or
+regex filters.
+
+When filtering, you can show nearby lines that were filtered out; after context `-A`, before context
+`-B`, and context `-C` are supported, just like grep. Non-contiguous context regions are separated
+with "---".
+
+All fancy string processing (subsecond timestamps, field eliding, etc.) works correctly in the
+presence of filtering and context.
+
+### jq
+
 You can pass a [jq](https://stedolan.github.io/jq/) program to process the input. Something like
 `jlog -e 'select($LVL>$INFO)'` will only show logs with a level greater than info. Something like
 `jlog -e 'select($MSG | test("foo"))'` will only show messages that contain "foo" (even if a field
@@ -134,6 +155,14 @@ contains foo). You can of course access any field in the parsed JSON log line an
 decisions on that, or delete fields, or add new fields.
 
 The JQ program is run after schema detection and validation.
+
+### Regular expressions
+
+You can pass `-g <regex>` to only show lines that match the provided regex. `-G` does the opposite,
+filtering out lines that match the regex (like `grep -v`).
+
+If provided, the JQ program is run regardless of the outcome of regex filtering, and can still
+filter the line out. (It can't add back a filtered line, though.)
 
 ## Highlighting
 
