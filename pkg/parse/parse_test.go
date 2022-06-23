@@ -2,6 +2,7 @@ package parse
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,7 +14,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/itchyny/gojq"
+	"github.com/logrusorgru/aurora/v3"
 )
 
 var (
@@ -661,15 +662,15 @@ var goodLine = `{"t":1,"l":"info","m":"hi","a":42}` + "\n"
 
 func TestReadLog(t *testing.T) {
 	testData := []struct {
-		name         string
-		r            io.Reader
-		w            rw
-		is           *InputSchema
-		jq           *gojq.Code
-		wantOutput   string
-		wantSummary  Summary
-		wantErrs     []error
-		wantFinalErr error
+		name                   string
+		r                      io.Reader
+		w                      rw
+		is                     *InputSchema
+		jq, matchrx, nomatchrx string
+		wantOutput             string
+		wantSummary            Summary
+		wantErrs               []error
+		wantFinalErr           error
 	}{
 		{
 			name:         "empty input",
@@ -716,7 +717,7 @@ func TestReadLog(t *testing.T) {
 			r:            strings.NewReader(goodLine),
 			w:            new(bytes.Buffer),
 			is:           basicSchema,
-			jq:           mustJQ(".a |= . + $LVL"),
+			jq:           ".a |= . + $LVL",
 			wantOutput:   "{LVL:I} {TS:1} {MSG:hi} {F:A:45}\n",
 			wantSummary:  Summary{Lines: 1},
 			wantErrs:     nil,
@@ -747,7 +748,7 @@ func TestReadLog(t *testing.T) {
 			r:            strings.NewReader(`{"a":42}` + "\n"),
 			w:            new(bytes.Buffer),
 			is:           laxSchema,
-			jq:           mustJQ("select(.a!=42)"),
+			jq:           "select(.a!=42)",
 			wantOutput:   "",
 			wantSummary:  Summary{Lines: 1, Filtered: 1, Errors: 1},
 			wantErrs:     nil,
@@ -758,7 +759,7 @@ func TestReadLog(t *testing.T) {
 			r:            strings.NewReader(`{"a":42}` + "\n"),
 			w:            new(bytes.Buffer),
 			is:           basicSchema,
-			jq:           mustJQ("select(.a!=42)"),
+			jq:           "select(.a!=42)",
 			wantOutput:   `{"a":42}` + "\n",
 			wantSummary:  Summary{Lines: 1, Errors: 1},
 			wantErrs:     []error{Match("no time key")},
@@ -809,7 +810,7 @@ func TestReadLog(t *testing.T) {
 			r:            strings.NewReader(goodLine + goodLine),
 			w:            new(bytes.Buffer),
 			is:           basicSchema,
-			jq:           mustJQ("select($TS<0)"),
+			jq:           "select($TS<0)",
 			wantOutput:   "",
 			wantSummary:  Summary{Lines: 2, Errors: 0, Filtered: 2},
 			wantErrs:     nil,
@@ -820,7 +821,7 @@ func TestReadLog(t *testing.T) {
 			r:            strings.NewReader(goodLine),
 			w:            new(bytes.Buffer),
 			is:           basicSchema,
-			jq:           mustJQ("{}"),
+			jq:           "{}",
 			wantOutput:   "{LVL:I} {TS:1} {MSG:hi}\n",
 			wantSummary:  Summary{Lines: 1, Errors: 0, Filtered: 0},
 			wantErrs:     nil,
@@ -866,52 +867,6 @@ func TestReadLog(t *testing.T) {
 			wantErrs:     nil,
 			wantFinalErr: Match("panic"),
 		},
-		// These jq tests are here because I am not sure that I want to make a single jq
-		// error abort processing entirely yet.
-		{
-			name:         "removing fields with 'null'",
-			r:            strings.NewReader(goodLine),
-			w:            new(bytes.Buffer),
-			is:           basicSchema,
-			jq:           mustJQ("null"),
-			wantOutput:   goodLine,
-			wantSummary:  Summary{Lines: 1, Errors: 1, Filtered: 0},
-			wantErrs:     nil,
-			wantFinalErr: Match("unexpected nil"),
-		},
-		{
-			name:         "returning an error from jq",
-			r:            strings.NewReader(goodLine),
-			w:            new(bytes.Buffer),
-			is:           basicSchema,
-			jq:           mustJQ("error(\"goodbye\")"),
-			wantOutput:   goodLine,
-			wantSummary:  Summary{Lines: 1, Errors: 1, Filtered: 0},
-			wantErrs:     nil,
-			wantFinalErr: Match("goodbye"),
-		},
-		{
-			name:         "returning multiple lines from jq",
-			r:            strings.NewReader(goodLine),
-			w:            new(bytes.Buffer),
-			is:           basicSchema,
-			jq:           mustJQ("{},{}"),
-			wantOutput:   goodLine,
-			wantSummary:  Summary{Lines: 1, Errors: 1, Filtered: 0},
-			wantErrs:     nil,
-			wantFinalErr: Match("unexpectedly produced more than 1 output"),
-		},
-		{
-			name:         "highlighting messages",
-			r:            strings.NewReader(`{"t":1,"l":"info","m":"hi","a":42}` + "\n" + `{"t":1,"l":"warn","m":"hi","a":42}` + "\n"),
-			w:            new(bytes.Buffer),
-			is:           basicSchema,
-			jq:           mustJQ(`highlight($LVL==$WARN)`),
-			wantOutput:   "{LVL:I} {TS:1} {MSG:hi} {F:A:42}\n{LVL:W} {TS:1} {MSG:[hi]} {F:A:<same>}\n",
-			wantSummary:  Summary{Lines: 2},
-			wantErrs:     nil,
-			wantFinalErr: nil,
-		},
 		{
 			name: "log without time, level, and message",
 			r:    strings.NewReader(`{"t":1,"l":"info","m":"hi","a":"value"}` + "\n" + `{"a":"value","t":1}` + "\n{}\n"),
@@ -941,6 +896,52 @@ func TestReadLog(t *testing.T) {
 			wantErrs:     nil,
 			wantFinalErr: nil,
 		},
+		// These jq tests are here because I am not sure that I want to make a single jq
+		// error abort processing entirely yet.
+		{
+			name:         "removing fields with 'null'",
+			r:            strings.NewReader(goodLine),
+			w:            new(bytes.Buffer),
+			is:           basicSchema,
+			jq:           "null",
+			wantOutput:   goodLine,
+			wantSummary:  Summary{Lines: 1, Errors: 1, Filtered: 0},
+			wantErrs:     nil,
+			wantFinalErr: Match("unexpected nil"),
+		},
+		{
+			name:         "returning an error from jq",
+			r:            strings.NewReader(goodLine),
+			w:            new(bytes.Buffer),
+			is:           basicSchema,
+			jq:           `error("goodbye")`,
+			wantOutput:   goodLine,
+			wantSummary:  Summary{Lines: 1, Errors: 1, Filtered: 0},
+			wantErrs:     nil,
+			wantFinalErr: Match("goodbye"),
+		},
+		{
+			name:         "returning multiple lines from jq",
+			r:            strings.NewReader(goodLine),
+			w:            new(bytes.Buffer),
+			is:           basicSchema,
+			jq:           "{},{}",
+			wantOutput:   goodLine,
+			wantSummary:  Summary{Lines: 1, Errors: 1, Filtered: 0},
+			wantErrs:     nil,
+			wantFinalErr: Match("unexpectedly produced more than 1 output"),
+		},
+		{
+			name:         "highlighting messages",
+			r:            strings.NewReader(`{"t":1,"l":"info","m":"hi","a":42}` + "\n" + `{"t":1,"l":"warn","m":"hi","a":42}` + "\n"),
+			w:            new(bytes.Buffer),
+			is:           basicSchema,
+			jq:           `highlight($LVL==$WARN)`,
+			wantOutput:   "{LVL:I} {TS:1} {MSG:hi} {F:A:42}\n{LVL:W} {TS:1} {MSG:[hi]} {F:A:<same>}\n",
+			wantSummary:  Summary{Lines: 2},
+			wantErrs:     nil,
+			wantFinalErr: nil,
+		},
 	}
 	for _, test := range testData {
 		var gotErrs []error
@@ -952,8 +953,15 @@ func TestReadLog(t *testing.T) {
 		}
 
 		t.Run(test.name, func(t *testing.T) {
-			fs := &FilterScheme{
-				JQ: test.jq,
+			fs := new(FilterScheme)
+			if err := fs.AddJQ(test.jq); err != nil {
+				t.Fatalf("add jq: %v", err)
+			}
+			if err := fs.AddMatchRegex(test.matchrx); err != nil {
+				t.Fatalf("add matchregex: %v", err)
+			}
+			if err := fs.AddNoMatchRegex(test.nomatchrx); err != nil {
+				t.Fatalf("add nomatchregex: %v", err)
 			}
 			summary, err := ReadLog(test.r, test.w, test.is, os, fs)
 			if diff := cmp.Diff(test.w.String(), test.wantOutput); diff != "" {
@@ -972,109 +980,349 @@ func TestReadLog(t *testing.T) {
 	}
 }
 
-func mustJQ(prog string) *gojq.Code {
-	jq, err := compileJQ(prog)
-	if err != nil {
-		panic(err)
-	}
-	return jq
-}
-
 func TestReadLogWithNullFormatter(t *testing.T) {
 	r := strings.NewReader(`{"level":"info","ts":12345,"msg":"foo"}` + "\n")
 	w := io.Discard
 	is := &InputSchema{Strict: false}
 	os := &OutputSchema{}
-	fs := &FilterScheme{JQ: mustJQ(".")}
+	fs := new(FilterScheme)
 	if _, err := ReadLog(r, w, is, os, fs); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestJQ(t *testing.T) {
-	referenceLine := func() *line { return &line{msg: "foo", fields: map[string]interface{}{"foo": 42, "bar": "hi"}} }
+func ts(t float64) time.Time {
+	fl := math.Floor(t)
+	sec := int64(fl)
+	nsec := int64(1e3 * math.Round(1e6*(t-fl)))
+	return time.Unix(sec, nsec)
+}
+
+func makeLog(t time.Time, lvl, message string, fields map[string]any) string {
+	x := map[string]any{
+		"ts":    t.In(time.UTC).Format(time.RFC3339Nano),
+		"level": lvl,
+		"msg":   message,
+	}
+	for k, v := range fields {
+		x[k] = v
+	}
+	b, err := json.Marshal(x)
+	if err != nil {
+		panic(fmt.Sprintf("make log: marshal: %v", err))
+	}
+	return string(b)
+}
+
+var (
+	testLog = []string{
+		makeLog(ts(1), "info", "start", nil),
+		makeLog(ts(1.000001), "debug", "reading config", map[string]any{"file": "/tmp/config.json"}),
+		makeLog(ts(1.000002), "debug", "reading config", map[string]any{"file": "/tmp/config-overlay.json"}),
+		makeLog(ts(1.002), "info", "serving", map[string]any{"port": 8080}),
+		makeLog(ts(10), "debug", "started incoming request", map[string]any{"route": "/example", "request_id": 1234}),
+		makeLog(ts(10.01), "debug", "started incoming request", map[string]any{"route": "/test", "request_id": 4321}),
+		makeLog(ts(10.02), "debug", "finished incoming request", map[string]any{"route": "/example", "request_id": 1234, "response_code": 200}),
+		makeLog(ts(10.0201), "warn", "user not found", map[string]any{"route": "/test", "request_id": 4321}),
+		makeLog(ts(10.0202), "error", "finished incoming request", map[string]any{"route": "/test", "request_id": 4321, "response_code": 401}),
+		makeLog(ts(10.03), "debug", "started incoming request", map[string]any{"route": "/example", "request_id": 5432}),
+		makeLog(ts(10.031), "debug", "finished incoming request", map[string]any{"route": "/example", "request_id": 5432, "response_code": 200}),
+		makeLog(ts(100), "info", "shutting down server; waiting for connections to drain", map[string]any{"port": 8080}),
+		makeLog(ts(115), "info", "connections drained", map[string]any{"port": 8080}),
+	}
+
+	formattedTestLog = []string{
+		"INFO  Jan  1 00:00:01.000000 start",
+		"DEBUG                .000001 reading config file:/tmp/config.json",
+		"DEBUG                .000002 reading config file:/tmp/config-overlay.json",
+		"INFO                 .002000 serving port:8080",
+		"DEBUG Jan  1 00:00:10.000000 started incoming request request_id:1234 route:/example",
+		"DEBUG                .010000 started incoming request request_id:4321 route:/test",
+		"DEBUG                .020000 finished incoming request request_id:1234 route:/example response_code:200",
+		"WARN                 .020100 user not found request_id:4321 route:/test",
+		"ERROR                .020200 finished incoming request request_id:↑ route:↑ response_code:401",
+		"DEBUG                .030000 started incoming request request_id:5432 route:/example",
+		"DEBUG                .031000 finished incoming request request_id:↑ route:↑ response_code:200",
+		"INFO  Jan  1 00:01:40.000000 shutting down server; waiting for connections to drain port:8080",
+		"INFO  Jan  1 00:01:55.000000 connections drained port:↑",
+	}
+)
+
+func TestFullLog(t *testing.T) {
 	testData := []struct {
-		jq           *gojq.Code
-		l            *line
-		wantLine     *line
-		wantFiltered bool
-		wantErr      error
+		name                         string
+		jq, matchregex, nomatchregex string
+		beforecontext, aftercontext  int
+		input                        []string
+		wantOutput                   []string
 	}{
 		{
-			jq:           mustJQ("."),
-			l:            referenceLine(),
-			wantLine:     referenceLine(),
-			wantFiltered: false,
-			wantErr:      nil,
+			name:       "no filtering",
+			input:      testLog,
+			wantOutput: formattedTestLog,
 		},
 		{
-			jq:           nil,
-			l:            referenceLine(),
-			wantLine:     referenceLine(),
-			wantFiltered: false,
-			wantErr:      nil,
+			name:          "no filtering, before context",
+			input:         testLog,
+			beforecontext: 2,
+			wantOutput:    formattedTestLog,
 		},
 		{
-			jq:           mustJQ(`error("goodbye")`),
-			l:            referenceLine(),
-			wantLine:     referenceLine(),
-			wantFiltered: false,
-			wantErr:      Match("goodbye"),
+			name:         "no filtering, after context",
+			input:        testLog,
+			aftercontext: 2,
+			wantOutput:   formattedTestLog,
 		},
 		{
-			jq:           mustJQ("null"),
-			l:            referenceLine(),
-			wantLine:     referenceLine(),
-			wantFiltered: false,
-			wantErr:      Match("unexpected nil result"),
+			name:          "no filtering, context",
+			input:         testLog,
+			beforecontext: 2,
+			aftercontext:  2,
+			wantOutput:    formattedTestLog,
 		},
 		{
-			jq:           mustJQ("3.141592"),
-			l:            referenceLine(),
-			wantLine:     referenceLine(),
-			wantFiltered: false,
-			wantErr:      Match("unexpected result type float64\\(3.1"),
+			name:  "jq filter by request id",
+			input: testLog,
+			jq:    `select(.request_id == 1234)`,
+			wantOutput: []string{
+				"DEBUG Jan  1 00:00:10.000000 started incoming request request_id:1234 route:/example",
+				"DEBUG                .020000 finished incoming request request_id:↑ route:↑ response_code:200",
+			},
 		},
 		{
-			jq:           mustJQ("1 > 2"),
-			l:            referenceLine(),
-			wantLine:     referenceLine(),
-			wantFiltered: false,
-			wantErr:      Match("unexpected boolean output"),
+			name:          "jq filter by request id, before context",
+			input:         testLog,
+			jq:            `select(.request_id == 1234)`,
+			beforecontext: 2,
+			wantOutput: []string{
+				"DEBUG Jan  1 00:00:01.000002 reading config file:/tmp/config-overlay.json",
+				"INFO                 .002000 serving port:8080",
+				"DEBUG Jan  1 00:00:10.000000 started incoming request request_id:1234 route:/example",
+				"DEBUG                .010000 started incoming request request_id:4321 route:/test",
+				"DEBUG                .020000 finished incoming request request_id:1234 route:/example response_code:200",
+			},
 		},
 		{
-			jq:           mustJQ("{}"),
-			l:            referenceLine(),
-			wantLine:     &line{msg: "foo"},
-			wantFiltered: false,
-			wantErr:      nil,
+			name:         "jq filter by request id, after context",
+			input:        testLog,
+			jq:           `select(.request_id == 1234)`,
+			aftercontext: 2,
+			wantOutput: []string{
+				"DEBUG Jan  1 00:00:10.000000 started incoming request request_id:1234 route:/example",
+				"DEBUG                .010000 started incoming request request_id:4321 route:/test",
+				"DEBUG                .020000 finished incoming request request_id:1234 route:/example response_code:200",
+				"WARN                 .020100 user not found request_id:4321 route:/test",
+				"ERROR                .020200 finished incoming request request_id:↑ route:↑ response_code:401",
+			},
 		},
 		{
-			jq:           mustJQ("{}, {}"),
-			l:            referenceLine(),
-			wantLine:     &line{msg: "foo"},
-			wantFiltered: false,
-			wantErr:      Match("unexpectedly produced more than 1 output"),
+			name:          "jq filter by request id, both context",
+			input:         testLog,
+			jq:            `select(.request_id == 1234)`,
+			aftercontext:  2,
+			beforecontext: 2,
+			wantOutput: []string{
+				"DEBUG Jan  1 00:00:01.000002 reading config file:/tmp/config-overlay.json",
+				"INFO                 .002000 serving port:8080",
+				"DEBUG Jan  1 00:00:10.000000 started incoming request request_id:1234 route:/example",
+				"DEBUG                .010000 started incoming request request_id:4321 route:/test",
+				"DEBUG                .020000 finished incoming request request_id:1234 route:/example response_code:200",
+				"WARN                 .020100 user not found request_id:4321 route:/test",
+				"ERROR                .020200 finished incoming request request_id:↑ route:↑ response_code:401",
+			},
 		},
 		{
-			jq:           mustJQ("empty"),
-			l:            referenceLine(),
-			wantLine:     &line{msg: "foo"},
-			wantFiltered: true,
-			wantErr:      nil,
+			name:          "jq filter, non-contiguous",
+			input:         testLog,
+			jq:            `select(.port == 8080)`,
+			aftercontext:  1,
+			beforecontext: 1,
+			wantOutput: []string{
+				"DEBUG Jan  1 00:00:01.000002 reading config file:/tmp/config-overlay.json",
+				"INFO                 .002000 serving port:8080",
+				"DEBUG Jan  1 00:00:10.000000 started incoming request request_id:1234 route:/example",
+				"---",
+				"DEBUG                .031000 finished incoming request request_id:5432 route:↑ response_code:200",
+				"INFO  Jan  1 00:01:40.000000 shutting down server; waiting for connections to drain port:8080",
+				"INFO  Jan  1 00:01:55.000000 connections drained port:↑",
+			},
+		},
+		{
+			name:       "regex match",
+			input:      testLog,
+			matchregex: `(?P<state>started|finished) (?P<dir>incoming|outgoing)`,
+			wantOutput: []string{
+				"DEBUG Jan  1 00:00:10.000000 started incoming request dir:incoming request_id:1234 route:/example state:started",
+				"DEBUG                .010000 started incoming request dir:↑ request_id:4321 route:/test state:↑",
+				"DEBUG                .020000 finished incoming request dir:↑ request_id:1234 route:/example state:finished response_code:200",
+				"ERROR                .020200 finished incoming request dir:↑ request_id:4321 route:/test state:↑ response_code:401",
+				"DEBUG                .030000 started incoming request dir:↑ request_id:5432 route:/example state:started",
+				"DEBUG                .031000 finished incoming request dir:↑ request_id:↑ route:↑ state:finished response_code:200",
+			},
+		},
+		{
+			name:          "regex match, before context",
+			input:         testLog,
+			beforecontext: 2,
+			matchregex:    `(?P<state>started|finished) (?P<dir>incoming|outgoing)`,
+			wantOutput: []string{
+				"DEBUG Jan  1 00:00:01.000002 reading config file:/tmp/config-overlay.json",
+				"INFO                 .002000 serving port:8080",
+				"DEBUG Jan  1 00:00:10.000000 started incoming request dir:incoming request_id:1234 route:/example state:started",
+				"DEBUG                .010000 started incoming request dir:↑ request_id:4321 route:/test state:↑",
+				"DEBUG                .020000 finished incoming request dir:↑ request_id:1234 route:/example state:finished response_code:200",
+				"WARN                 .020100 user not found request_id:4321 route:/test",
+				"ERROR                .020200 finished incoming request dir:incoming request_id:↑ route:↑ state:finished response_code:401",
+				"DEBUG                .030000 started incoming request dir:↑ request_id:5432 route:/example state:started",
+				"DEBUG                .031000 finished incoming request dir:↑ request_id:↑ route:↑ state:finished response_code:200",
+			},
+		},
+		{
+			name:       "regex match with jq",
+			input:      testLog,
+			matchregex: `(?P<state>started|finished) (?P<dir>incoming|outgoing)`,
+			jq:         `select(.state == "started") | {state, dir}`,
+			wantOutput: []string{
+				"DEBUG Jan  1 00:00:10.000000 started incoming request dir:incoming state:started",
+				"DEBUG                .010000 started incoming request dir:↑ state:↑",
+				"DEBUG                .030000 started incoming request dir:↑ state:↑",
+			},
+		},
+		{
+			name:          "regex match with jq, with context",
+			input:         testLog,
+			matchregex:    `(?P<state>started|finished) (?P<dir>incoming|outgoing)`,
+			jq:            `select(.state == "started") | {}`,
+			beforecontext: 1,
+			aftercontext:  1,
+			wantOutput: []string{
+				"INFO  Jan  1 00:00:01.002000 serving port:8080",
+				"DEBUG Jan  1 00:00:10.000000 started incoming request",
+				"DEBUG                .010000 started incoming request",
+				"DEBUG                .020000 finished incoming request dir:incoming request_id:1234 response_code:200 route:/example state:finished",
+				"---",
+				"ERROR                .020200 finished incoming request dir:↑ request_id:4321 response_code:401 route:/test state:↑",
+				"DEBUG                .030000 started incoming request",
+				"DEBUG                .031000 finished incoming request dir:incoming request_id:5432 response_code:200 route:/example state:finished",
+			},
+		},
+		{
+			name:          "regex nomatch",
+			input:         testLog,
+			beforecontext: 1,
+			aftercontext:  1,
+			nomatchregex:  `(started|finished) incoming request`,
+			wantOutput: []string{
+				"INFO  Jan  1 00:00:01.000000 start",
+				"DEBUG                .000001 reading config file:/tmp/config.json",
+				"DEBUG                .000002 reading config file:/tmp/config-overlay.json",
+				"INFO                 .002000 serving port:8080",
+				"DEBUG Jan  1 00:00:10.000000 started incoming request $1:started request_id:1234 route:/example",
+				"---",
+				"DEBUG                .020000 finished incoming request $1:finished request_id:↑ route:↑ response_code:200",
+				"WARN                 .020100 user not found request_id:4321 route:/test",
+				"ERROR                .020200 finished incoming request $1:finished request_id:↑ route:↑ response_code:401",
+				"---",
+				"DEBUG                .031000 finished incoming request $1:↑ request_id:5432 route:/example response_code:200",
+				"INFO  Jan  1 00:01:40.000000 shutting down server; waiting for connections to drain port:8080",
+				"INFO  Jan  1 00:01:55.000000 connections drained port:↑",
+			},
+		},
+		{
+			name:          "regex nomatch with jq",
+			input:         testLog,
+			beforecontext: 1,
+			aftercontext:  1,
+			nomatchregex:  `(started|finished) incoming request`,
+			jq:            `if ."$1" != null then {"$1"} else {} end`,
+			wantOutput: []string{
+				"INFO  Jan  1 00:00:01.000000 start",
+				"DEBUG                .000001 reading config",
+				"DEBUG                .000002 reading config",
+				"INFO                 .002000 serving",
+				"DEBUG Jan  1 00:00:10.000000 started incoming request $1:started",
+				"---",
+				"DEBUG                .020000 finished incoming request $1:finished",
+				"WARN                 .020100 user not found",
+				"ERROR                .020200 finished incoming request $1:finished",
+				"---",
+				"DEBUG                .031000 finished incoming request $1:↑",
+				"INFO  Jan  1 00:01:40.000000 shutting down server; waiting for connections to drain",
+				"INFO  Jan  1 00:01:55.000000 connections drained",
+			},
+		},
+		{
+			name:          "no output, regex",
+			input:         testLog,
+			beforecontext: 1,
+			aftercontext:  1,
+			matchregex:    "this matches nothing",
+		},
+		{
+			name:          "no output, regex nomatch",
+			input:         testLog,
+			beforecontext: 1,
+			aftercontext:  1,
+			nomatchregex:  ".*",
+		},
+		{
+			name:          "jq",
+			input:         testLog,
+			beforecontext: 1,
+			aftercontext:  1,
+			jq:            "empty",
 		},
 	}
+
 	for _, test := range testData {
-		fs := &FilterScheme{JQ: test.jq}
-		gotFiltered, gotErr := fs.runJQ(test.l)
-		if diff := cmp.Diff(test.l, test.wantLine, cmp.AllowUnexported(line{}), cmpopts.EquateEmpty()); diff != "" {
-			t.Errorf("line: %s", diff)
-		}
-		if got, want := gotFiltered, test.wantFiltered; got != want {
-			t.Errorf("filtered:\n  got: %v\n want: %v", got, want)
-		}
-		if got, want := gotErr, test.wantErr; !comperror(got, want) {
-			t.Errorf("error:\n  got: %v\n want: %v", got, want)
-		}
+		t.Run(test.name, func(t *testing.T) {
+			fs := new(FilterScheme)
+			if err := fs.AddJQ(test.jq); err != nil {
+				t.Fatal(err)
+			}
+			if err := fs.AddMatchRegex(test.matchregex); err != nil {
+				t.Fatal(err)
+			}
+			if err := fs.AddNoMatchRegex(test.nomatchregex); err != nil {
+				t.Fatal(err)
+			}
+
+			r := strings.NewReader(strings.Join(test.input, "\n"))
+			w := new(bytes.Buffer)
+
+			is := &InputSchema{
+				TimeKey:     "ts",
+				TimeFormat:  DefaultTimeParser,
+				LevelKey:    "level",
+				LevelFormat: DefaultLevelParser,
+				MessageKey:  "msg",
+				Strict:      true,
+			}
+
+			os := &OutputSchema{
+				Formatter: &DefaultOutputFormatter{
+					Aurora:               aurora.NewAurora(false),
+					ElideDuplicateFields: true,
+					AbsoluteTimeFormat:   time.StampMicro,
+					SubSecondsOnlyFormat: "               .000000",
+					Zone:                 time.UTC,
+				},
+				BeforeContext: test.beforecontext,
+				AfterContext:  test.aftercontext,
+			}
+
+			if _, err := ReadLog(r, w, is, os, fs); err != nil {
+				t.Errorf("read log: unexpected error: %v", err)
+			}
+
+			out := strings.Split(w.String(), "\n")
+			if len(out) > 0 && out[len(out)-1] == "" {
+				out = out[:len(out)-1]
+			}
+			if diff := cmp.Diff(out, test.wantOutput, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("output:\ngot:<\n%s\n>\nwant:<\n%s\n>", strings.Join(out, "\n"), strings.Join(test.wantOutput, "\n"))
+				t.Logf("diff: (-clean +maybe with bugs)\n %v", diff)
+			}
+		})
 	}
 }

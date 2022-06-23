@@ -98,7 +98,6 @@ func (f *FilterScheme) runJQ(l *line) (bool, error) {
 		}
 	} else {
 		filtered = true
-		l.fields = make(map[string]interface{})
 	}
 	return filtered, nil
 }
@@ -120,6 +119,7 @@ func runRegexp(rx *regexp.Regexp, l *line, scope regexpScope) bool {
 	case regexpScopeMessage:
 		input = l.msg
 	}
+
 	fields := rx.FindStringSubmatch(input)
 	if len(fields) == 0 {
 		return false
@@ -139,21 +139,67 @@ func runRegexp(rx *regexp.Regexp, l *line, scope regexpScope) bool {
 // Run runs all the filters defined in this FilterScheme against the provided line.  The return
 // value is true if the line should be removed from the output ("filtered").
 func (f *FilterScheme) Run(l *line) (bool, error) {
+	rxFiltered := false
 	if rx := f.NoMatchRegex; rx != nil {
-		found := runRegexp(rx, l, regexpScopeMessage)
-		if found {
-			return true, nil
+		if found := runRegexp(rx, l, regexpScopeMessage); found {
+			rxFiltered = true
 		}
 	}
 	if rx := f.MatchRegex; rx != nil {
-		found := runRegexp(rx, l, regexpScopeMessage)
-		if !found {
-			return true, nil
+		if found := runRegexp(rx, l, regexpScopeMessage); !found {
+			rxFiltered = true
 		}
 	}
-	filtered, err := f.runJQ(l)
+	jqFiltered, err := f.runJQ(l)
 	if err != nil {
 		return false, fmt.Errorf("jq: %w", err)
 	}
-	return filtered, nil
+	return rxFiltered || jqFiltered, nil
+}
+
+var (
+	ErrAlreadyAdded = errors.New("regex already added")
+	ErrConflict     = errors.New("attempt to add regex when a conflicting regex has already been added")
+)
+
+// Add a MatchRegex to this filter scheme.  A MatchRegex filters out all lines that do not match it.
+// An empty string is a no-op.  This method may only be called with a non-empty string once, and
+// returns an ErrConflict if a NoMatchRegex is set.
+func (f *FilterScheme) AddMatchRegex(rx string) error {
+	if rx == "" {
+		return nil
+	}
+	if f.MatchRegex != nil {
+		return ErrAlreadyAdded
+	}
+	if f.NoMatchRegex != nil {
+		return ErrConflict
+	}
+	var err error
+	f.MatchRegex, err = regexp.Compile(rx)
+	if err != nil {
+		return fmt.Errorf("compile regex: %w", err)
+	}
+	return nil
+}
+
+// Add a NoMatchRegex to this filter scheme.  A NoMatchRegex filters out all lines that match it.
+// An empty string is a no-op.  This method may only be called with a non-empty string once, and
+// returns an ErrConflict if a MatchRegex is set.
+func (f *FilterScheme) AddNoMatchRegex(rx string) error {
+	if rx == "" {
+		return nil
+	}
+	if f.NoMatchRegex != nil {
+		return ErrAlreadyAdded
+	}
+	if f.MatchRegex != nil {
+		return ErrConflict
+	}
+	var err error
+	f.NoMatchRegex, err = regexp.Compile(rx)
+	if err != nil {
+		return fmt.Errorf("compile: %w", err)
+	}
+	return nil
 }

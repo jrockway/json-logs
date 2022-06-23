@@ -22,9 +22,8 @@ func (c *context) Print(msg *line, selected bool) []*line {
 			c.lastPrint != 0 &&
 			// suppress separator if we are no-op context
 			(c.After != 0 || c.Before != 0) &&
-			// suppress separator if end of after is contigious with the start of before
+			// suppress separator if end of after is contiguous with the start of before
 			c.line-len(c.lines)-c.lastPrint > 1 {
-
 			result = append(result, &line{isSeparator: true})
 		}
 		for _, l := range c.lines {

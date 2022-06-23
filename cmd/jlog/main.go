@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"regexp"
 	"runtime/debug"
 	"runtime/pprof"
 	"strings"
@@ -172,23 +171,14 @@ func main() {
 		fmt.Fprintf(os.Stderr, "cannot have both a non-empty MatchRegex and a non-empty NoMatchRegex\n")
 		os.Exit(1)
 	}
-	if rx := gen.MatchRegex; rx != "" {
-		regex, err := regexp.Compile(rx)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "problem compiling MatchRegex: %v\n", err)
-			os.Exit(1)
-		}
-		fsch.MatchRegex = regex
+	if err := fsch.AddMatchRegex(gen.MatchRegex); err != nil {
+		fmt.Fprintf(os.Stderr, "problem compiling MatchRegex: %v\n", err)
+		os.Exit(1)
 	}
-	if rx := gen.NoMatchRegex; rx != "" {
-		regex, err := regexp.Compile(rx)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "problem compiling NoMatchRegex: %v\n", err)
-			os.Exit(1)
-		}
-		fsch.NoMatchRegex = regex
+	if err := fsch.AddNoMatchRegex(gen.NoMatchRegex); err != nil {
+		fmt.Fprintf(os.Stderr, "problem compiling NoMatchRegex: %v\n", err)
+		os.Exit(1)
 	}
-
 	if err := fsch.AddJQ(gen.JQ); err != nil {
 		fmt.Fprintf(os.Stderr, "problem %v\n", err)
 		os.Exit(1)

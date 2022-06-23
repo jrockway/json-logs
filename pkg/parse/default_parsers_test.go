@@ -103,6 +103,7 @@ func TestLevelParsers(t *testing.T) {
 }
 
 func TestNoopParsers(t *testing.T) {
+	// nolint: errcheck
 	testData := []func(){func() { NoopTimeParser(1) }, func() { NoopLevelParser("info") }}
 	for _, test := range testData {
 		ok := func() (ok bool) {

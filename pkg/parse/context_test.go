@@ -144,8 +144,8 @@ func TestContext(t *testing.T) {
 				l.reset()
 				l.msg = msg
 				selected := test.match.MatchString(msg)
-				print := ctx.Print(&l, selected)
-				for _, x := range print {
+				toEmit := ctx.Print(&l, selected)
+				for _, x := range toEmit {
 					if x.isSeparator {
 						out.WriteString("---")
 					} else {

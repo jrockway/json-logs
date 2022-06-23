@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"sort"
 	"time"
 
 	"github.com/logrusorgru/aurora/v3"
@@ -84,11 +85,16 @@ type OutputFormatter interface {
 
 // State keeps state between log lines.
 type State struct {
-	// seenFields maintains an ordering of all fields, so that they are consistent between log lines.
-	seenFields  []string
+	// seenFields maintains an ordering of all fields, so that they are consistent between log
+	// lines.
+	seenFields []string
+	// timePadding is the width of the time field, so that the next field in the output lines up
+	// with the line above it.
 	timePadding int
-	lastFields  map[string][]byte
-	lastTime    time.Time
+	// lastFields is the value of each field that was most recently seen.
+	lastFields map[string][]byte
+	// lastTime is the time of the last log line.
+	lastTime time.Time
 }
 
 // OutputSchema controls how output lines are formatted.
@@ -519,12 +525,19 @@ func (s *OutputSchema) Emit(l line, w *bytes.Buffer) {
 		}
 	}
 
-	// Any new fields.
-	for k, v := range l.fields {
+	// Any new fields (in a deterministic order, mostly for tests).
+	newFields := make([]string, 0, len(l.fields))
+	for k := range l.fields {
+		newFields = append(newFields, k)
+	}
+	sort.Strings(newFields)
+	for _, k := range newFields {
+		v := l.fields[k]
 		write(k, v)
 		s.state.seenFields = append(s.state.seenFields, k)
 	}
 
+	// Keep state for field eliding.
 	for k := range s.state.lastFields {
 		if _, ok := seenFieldsThisIteration[k]; !ok {
 			delete(s.state.lastFields, k)
