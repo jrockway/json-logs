@@ -145,6 +145,25 @@ type Summary struct {
 	Filtered int
 }
 
+func (s Summary) String() string {
+	lines := "1 line read"
+	if n := s.Lines; n != 1 {
+		lines = fmt.Sprintf("%d lines read", n)
+	}
+	if n := s.Filtered; n > 1 {
+		lines += fmt.Sprintf(" (%d lines filtered)", n)
+	} else if n == 1 {
+		lines += " (1 line filtered)"
+	}
+	errmsg := "; no parse errors"
+	if n := s.Errors; n == 1 {
+		errmsg = "; 1 parse error"
+	} else if n > 1 {
+		errmsg = fmt.Sprintf("; %d parse errors", n)
+	}
+	return fmt.Sprintf("%s%s.", lines, errmsg)
+}
+
 // ReadLog reads a stream of JSON-formatted log lines from the provided reader according to the
 // input schema, reformatting it and writing to the provided writer according to the output schema.
 // Parse errors are handled according to the input schema.  Any other errors, not including io.EOF

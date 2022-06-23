@@ -1326,3 +1326,44 @@ func TestFullLog(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatSummary(t *testing.T) {
+	testData := []struct {
+		in   Summary
+		want string
+	}{
+		{
+			in:   Summary{},
+			want: "0 lines read; no parse errors.",
+		},
+		{
+			in:   Summary{Lines: 1},
+			want: "1 line read; no parse errors.",
+		},
+		{
+			in:   Summary{Lines: 2, Filtered: 1},
+			want: "2 lines read (1 line filtered); no parse errors.",
+		},
+		{
+			in:   Summary{Lines: 2, Filtered: 2},
+			want: "2 lines read (2 lines filtered); no parse errors.",
+		},
+		{
+			in:   Summary{Lines: 100, Errors: 1},
+			want: "100 lines read; 1 parse error.",
+		},
+		{
+			in:   Summary{Lines: 100, Errors: 2},
+			want: "100 lines read; 2 parse errors.",
+		},
+	}
+
+	for _, test := range testData {
+		t.Run(test.want, func(t *testing.T) {
+			got := test.in.String()
+			if want := test.want; got != want {
+				t.Errorf("string:\n  got: %v\n want: %v", got, want)
+			}
+		})
+	}
+}
