@@ -164,6 +164,10 @@ filtering out lines that match the regex (like `grep -v`).
 If provided, the JQ program is run regardless of the outcome of regex filtering, and can still
 filter the line out. (It can't add back a filtered line, though.)
 
+Any captures in the regex match become fields in the output (and for JQ to inspect). By default,
+they are named `$1`, `$2`, etc. but you can choose your own name with the
+`(?P<name>regex goes here)` syntax.
+
 ## Highlighting
 
 The built-in jq function `highlight` will caused matched messages to display in inverse-video
