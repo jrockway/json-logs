@@ -604,7 +604,7 @@ func TestEmit(t *testing.T) {
 				PriorityFields: []string{"baz"},
 				state:          test.state,
 			}
-			s.Emit(test.line, w)
+			s.Emit(&test.line, w)
 			if diff := cmp.Diff(w.String(), test.want); diff != "" {
 				t.Errorf("emitted output:\n%v", diff)
 			}

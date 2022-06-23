@@ -273,7 +273,7 @@ func ReadLog(r io.Reader, w io.Writer, ins *InputSchema, outs *OutputSchema, fil
 					outs.noMessage = ins.NoMessageKey
 					outs.suppressionConfigured = true
 				}
-				outs.Emit(*toEmit, buf)
+				outs.Emit(toEmit, buf)
 			}
 
 			// Copying the buffer to the output writer is handled in defer.
@@ -471,9 +471,8 @@ func (s *InputSchema) ReadLine(l *line) error {
 	return retErr
 }
 
-// Emit emits a formatted line to the provided buffer.  The provided line object may not be used
-// again until reinitialized.
-func (s *OutputSchema) Emit(l line, w *bytes.Buffer) {
+// Emit emits a formatted line to the provided buffer.  Emit must not mutate line.
+func (s *OutputSchema) Emit(l *line, w *bytes.Buffer) {
 	// Is this a line separating unrelated contexts?  If so, print a separator and do nothing else.
 	if l.isSeparator {
 		w.WriteString("---\n")
