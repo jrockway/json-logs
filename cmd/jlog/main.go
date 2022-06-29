@@ -41,7 +41,7 @@ func main() {
 	var gen jlog.General
 	var in jlog.Input
 	var out jlog.Output
-	fp := flags.NewParser(nil, flags.HelpFlag|flags.PassDoubleDash)
+	fp := flags.NewParser(nil, flags.HelpFlag)
 	if _, err := fp.AddGroup("Input Schema", "", &in); err != nil {
 		panic(err)
 	}
