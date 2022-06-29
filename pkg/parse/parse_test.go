@@ -954,7 +954,7 @@ func TestReadLog(t *testing.T) {
 
 		t.Run(test.name, func(t *testing.T) {
 			fs := new(FilterScheme)
-			if err := fs.AddJQ(test.jq); err != nil {
+			if err := fs.AddJQ(test.jq, nil); err != nil {
 				t.Fatalf("add jq: %v", err)
 			}
 			if err := fs.AddMatchRegex(test.matchrx); err != nil {
@@ -1277,7 +1277,7 @@ func TestFullLog(t *testing.T) {
 	for _, test := range testData {
 		t.Run(test.name, func(t *testing.T) {
 			fs := new(FilterScheme)
-			if err := fs.AddJQ(test.jq); err != nil {
+			if err := fs.AddJQ(test.jq, nil); err != nil {
 				t.Fatal(err)
 			}
 			if err := fs.AddMatchRegex(test.matchregex); err != nil {

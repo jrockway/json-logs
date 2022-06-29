@@ -1,6 +1,8 @@
 package parse
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -9,9 +11,26 @@ import (
 
 func TestJQ(t *testing.T) {
 	referenceLine := func() *line { return &line{msg: "foo", fields: map[string]interface{}{"foo": 42, "bar": "hi"}} }
+	tmpdir, err := os.MkdirTemp("", "jlog-test-jq-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(tmpdir); err != nil {
+			t.Fatalf("cleanup: %v", err)
+		}
+	})
+	if err := os.WriteFile(filepath.Join(tmpdir, ".jq"), []byte(`def initFunction: {"init": true};`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpdir, "foo.jq"), []byte(`def no: select($MSG|test("foo")|not);`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
 	testData := []struct {
 		jq           string
 		l            *line
+		searchPath   []string
 		wantLine     *line
 		wantFiltered bool
 		wantErr      error
@@ -79,22 +98,51 @@ func TestJQ(t *testing.T) {
 			wantFiltered: true,
 			wantErr:      nil,
 		},
+		{
+			jq:           ".",
+			searchPath:   []string{filepath.Join(tmpdir, ".jq"), tmpdir},
+			l:            referenceLine(),
+			wantLine:     referenceLine(),
+			wantFiltered: false,
+			wantErr:      nil,
+		},
+		{
+			jq:         "initFunction",
+			searchPath: []string{filepath.Join(tmpdir, ".jq"), tmpdir},
+			l:          referenceLine(),
+			wantLine: &line{
+				msg:    "foo",
+				fields: map[string]interface{}{"init": true},
+			},
+			wantFiltered: false,
+			wantErr:      nil,
+		},
+		{
+			jq:           `import "foo" as foo; foo::no`,
+			searchPath:   []string{filepath.Join(tmpdir, ".jq"), tmpdir},
+			l:            referenceLine(),
+			wantLine:     referenceLine(),
+			wantFiltered: true,
+			wantErr:      nil,
+		},
 	}
 	for _, test := range testData {
-		fs := new(FilterScheme)
-		if err := fs.AddJQ(test.jq); err != nil {
-			t.Fatal(err)
-		}
-		gotFiltered, gotErr := fs.runJQ(test.l)
-		if diff := cmp.Diff(test.l, test.wantLine, cmp.AllowUnexported(line{}), cmpopts.EquateEmpty()); diff != "" {
-			t.Errorf("line: %s", diff)
-		}
-		if got, want := gotFiltered, test.wantFiltered; got != want {
-			t.Errorf("filtered:\n  got: %v\n want: %v", got, want)
-		}
-		if got, want := gotErr, test.wantErr; !comperror(got, want) {
-			t.Errorf("error:\n  got: %v\n want: %v", got, want)
-		}
+		t.Run(test.jq, func(t *testing.T) {
+			fs := new(FilterScheme)
+			if err := fs.AddJQ(test.jq, &JQOptions{SearchPath: test.searchPath}); err != nil {
+				t.Fatal(err)
+			}
+			gotFiltered, gotErr := fs.runJQ(test.l)
+			if diff := cmp.Diff(test.l, test.wantLine, cmp.AllowUnexported(line{}), cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("line: %s", diff)
+			}
+			if got, want := gotFiltered, test.wantFiltered; got != want {
+				t.Errorf("filtered:\n  got: %v\n want: %v", got, want)
+			}
+			if got, want := gotErr, test.wantErr; !comperror(got, want) {
+				t.Errorf("error:\n  got: %v\n want: %v", got, want)
+			}
+		})
 	}
 }
 
@@ -189,7 +237,7 @@ func TestAdds(t *testing.T) {
 			f := new(FilterScheme)
 			var errs []error
 			for _, jq := range test.jq {
-				if err := f.AddJQ(jq); err != nil {
+				if err := f.AddJQ(jq, nil); err != nil {
 					errs = append(errs, err)
 				}
 			}

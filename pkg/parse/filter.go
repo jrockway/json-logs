@@ -3,6 +3,7 @@ package parse
 import (
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 
 	"github.com/itchyny/gojq"
@@ -34,28 +35,48 @@ func prepareVariables(l *line) []interface{} {
 // highlightKey is a special key that controls highlighting.
 const highlightKey = "__highlight"
 
-func compileJQ(p string) (*gojq.Code, error) {
+func compileJQ(p string, searchPath []string) (*gojq.Code, error) {
 	if p == "" {
 		return nil, nil
 	}
-	p = "def highlight($cond): . + {__highlight: $cond};\n" + p
 	q, err := gojq.Parse(p)
 	if err != nil {
 		return nil, fmt.Errorf("parsing jq program %q: %v", p, err)
 	}
-	jq, err := gojq.Compile(q, gojq.WithVariables(DefaultVariables))
+	jq, err := gojq.Compile(q,
+		gojq.WithFunction("highlight", 1, 1, func(dot interface{}, args []interface{}) interface{} {
+			hl, ok := args[0].(bool)
+			if !ok {
+				return fmt.Errorf("argument to highlight should be a boolean; not %#v", args[0])
+			}
+			if val, ok := dot.(map[string]interface{}); ok {
+				val[highlightKey] = hl
+			}
+			return dot
+		}),
+		gojq.WithEnvironLoader(os.Environ),
+		gojq.WithVariables(DefaultVariables),
+		gojq.WithModuleLoader(gojq.NewModuleLoader(searchPath)))
 	if err != nil {
 		return nil, fmt.Errorf("compiling jq program %q: %v", p, err)
 	}
 	return jq, nil
 }
 
+type JQOptions struct {
+	SearchPath []string
+}
+
 // AddJQ compiles the provided jq program and adds it to the filter.
-func (f *FilterScheme) AddJQ(p string) error {
+func (f *FilterScheme) AddJQ(p string, opts *JQOptions) error {
 	if f.JQ != nil {
 		return errors.New("jq program already added")
 	}
-	jq, err := compileJQ(p)
+	var searchPath []string
+	if opts != nil {
+		searchPath = opts.SearchPath
+	}
+	jq, err := compileJQ(p, searchPath)
 	if err != nil {
 		return err // already has decent annotation
 	}
