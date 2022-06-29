@@ -125,6 +125,22 @@ func TestJQ(t *testing.T) {
 			wantFiltered: true,
 			wantErr:      nil,
 		},
+		{
+			jq:       `highlight(true)`,
+			l:        referenceLine(),
+			wantLine: func() *line { l := referenceLine(); l.highlight = true; return l }(),
+		},
+		{
+			jq:       `highlight(false)`,
+			l:        referenceLine(),
+			wantLine: referenceLine(),
+		},
+		{
+			jq:       `highlight(42)`,
+			l:        referenceLine(),
+			wantLine: referenceLine(),
+			wantErr:  Match("should be a boolean"),
+		},
 	}
 	for _, test := range testData {
 		t.Run(test.jq, func(t *testing.T) {
