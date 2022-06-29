@@ -5,16 +5,14 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
 	"runtime/debug"
 	"runtime/pprof"
-	"strings"
-	"sync/atomic"
 	"syscall"
 	_ "time/tzdata"
 
 	"github.com/jessevdk/go-flags"
 	"github.com/jrockway/json-logs/cmd/internal/jlog"
+	"github.com/jrockway/json-logs/pkg/interruptible"
 	"github.com/jrockway/json-logs/pkg/parse"
 	"github.com/mattn/go-colorable"
 )
@@ -103,22 +101,10 @@ func main() {
 		}
 	}
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGPIPE)
-	var nSignals int32
-	go func() {
-		c := <-sigCh
-		atomic.AddInt32(&nSignals, 1)
-		fmt.Fprintf(os.Stderr, "signal: %v\n", c.String())
-		os.Stdin.Close()
-		signal.Stop(sigCh)
-	}()
-
-	summary, err := parse.ReadLog(os.Stdin, colorable.NewColorableStdout(), ins, outs, fsch)
+	reader := interruptible.NewReader(os.Stdin, os.Interrupt)
+	summary, err := parse.ReadLog(reader, colorable.NewColorableStdout(), ins, outs, fsch)
 	if err != nil {
-		if signals := atomic.LoadInt32(&nSignals); signals < 1 || !strings.Contains(err.Error(), "file already closed") {
-			outs.EmitError(err.Error())
-		}
+		outs.EmitError(err.Error())
 	}
 	jlog.PrintOutputSummary(out, summary, os.Stderr)
 
