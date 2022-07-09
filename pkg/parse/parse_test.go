@@ -1052,6 +1052,7 @@ func TestFullLog(t *testing.T) {
 	testData := []struct {
 		name                         string
 		jq, matchregex, nomatchregex string
+		scope                        RegexpScope
 		beforecontext, aftercontext  int
 		input                        []string
 		wantOutput                   []string
@@ -1151,6 +1152,7 @@ func TestFullLog(t *testing.T) {
 			name:       "regex match",
 			input:      testLog,
 			matchregex: `(?P<state>started|finished) (?P<dir>incoming|outgoing)`,
+			scope:      RegexpScopeMessage,
 			wantOutput: []string{
 				"DEBUG Jan  1 00:00:10.000000 started incoming request dir:incoming request_id:1234 route:/example state:started",
 				"DEBUG                .010000 started incoming request dir:↑ request_id:4321 route:/test state:↑",
@@ -1165,6 +1167,7 @@ func TestFullLog(t *testing.T) {
 			input:         testLog,
 			beforecontext: 2,
 			matchregex:    `(?P<state>started|finished) (?P<dir>incoming|outgoing)`,
+			scope:         RegexpScopeMessage,
 			wantOutput: []string{
 				"DEBUG Jan  1 00:00:01.000002 reading config file:/tmp/config-overlay.json",
 				"INFO                 .002000 serving port:8080",
@@ -1181,6 +1184,7 @@ func TestFullLog(t *testing.T) {
 			name:       "regex match with jq",
 			input:      testLog,
 			matchregex: `(?P<state>started|finished) (?P<dir>incoming|outgoing)`,
+			scope:      RegexpScopeMessage,
 			jq:         `select(.state == "started") | {state, dir}`,
 			wantOutput: []string{
 				"DEBUG Jan  1 00:00:10.000000 started incoming request dir:incoming state:started",
@@ -1192,6 +1196,7 @@ func TestFullLog(t *testing.T) {
 			name:          "regex match with jq, with context",
 			input:         testLog,
 			matchregex:    `(?P<state>started|finished) (?P<dir>incoming|outgoing)`,
+			scope:         RegexpScopeMessage,
 			jq:            `select(.state == "started") | {}`,
 			beforecontext: 1,
 			aftercontext:  1,
@@ -1212,6 +1217,7 @@ func TestFullLog(t *testing.T) {
 			beforecontext: 1,
 			aftercontext:  1,
 			nomatchregex:  `(started|finished) incoming request`,
+			scope:         RegexpScopeMessage,
 			wantOutput: []string{
 				"INFO  Jan  1 00:00:01.000000 start",
 				"DEBUG                .000001 reading config file:/tmp/config.json",
@@ -1234,6 +1240,7 @@ func TestFullLog(t *testing.T) {
 			beforecontext: 1,
 			aftercontext:  1,
 			nomatchregex:  `(started|finished) incoming request`,
+			scope:         RegexpScopeMessage,
 			jq:            `if ."$1" != null then {"$1"} else {} end`,
 			wantOutput: []string{
 				"INFO  Jan  1 00:00:01.000000 start",
@@ -1252,11 +1259,22 @@ func TestFullLog(t *testing.T) {
 			},
 		},
 		{
+			name:       "regex match in fields",
+			input:      testLog,
+			matchregex: `200`,
+			scope:      RegexpScopeValues,
+			wantOutput: []string{
+				"DEBUG Jan  1 00:00:10.020000 finished incoming request request_id:1234 response_code:200 route:/example",
+				"DEBUG                .031000 finished incoming request request_id:5432 response_code:↑ route:↑",
+			},
+		},
+		{
 			name:          "no output, regex",
 			input:         testLog,
 			beforecontext: 1,
 			aftercontext:  1,
 			matchregex:    "this matches nothing",
+			scope:         RegexpScopeMessage,
 		},
 		{
 			name:          "no output, regex nomatch",
@@ -1264,6 +1282,7 @@ func TestFullLog(t *testing.T) {
 			beforecontext: 1,
 			aftercontext:  1,
 			nomatchregex:  ".*",
+			scope:         RegexpScopeMessage,
 		},
 		{
 			name:          "jq",
@@ -1286,6 +1305,7 @@ func TestFullLog(t *testing.T) {
 			if err := fs.AddNoMatchRegex(test.nomatchregex); err != nil {
 				t.Fatal(err)
 			}
+			fs.Scope = test.scope
 
 			r := strings.NewReader(strings.Join(test.input, "\n"))
 			w := new(bytes.Buffer)

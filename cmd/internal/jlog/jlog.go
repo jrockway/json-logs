@@ -28,13 +28,14 @@ type Output struct {
 }
 
 type General struct {
-	MatchRegex   string   `short:"g" long:"regex" description:"A regular expression that removes lines from the output that don't match, like grep."`
-	NoMatchRegex string   `short:"G" long:"no-regex" description:"A regular expression that removes lines from the output that DO match, like 'grep -v'."`
-	JQ           string   `short:"e" long:"jq" description:"A jq program to run on each record in the processed input; use this to ignore certain lines, add fields, etc.  Hint: 'select(condition)' will remove lines that don't match 'condition'."`
-	JQSearchPath []string `long:"jq-search-path" env:"JLOG_JQ_SEARCH_PATH" description:"A list of directories in which to search for JQ modules.  A path entry named (not merely ending in) .jq is automatically loaded.  When set through the environment, use ':' as the delimiter (like $PATH)." default:"~/.jq" default:"~/.jlog/jq/.jq" default:"~/.jlog/jq" env-delim:":"` //nolint
-	NoColor      bool     `short:"M" long:"no-color" description:"Disable the use of color." env:"JLOG_FORCE_MONOCHROME"`
-	NoMonochrome bool     `short:"c" long:"no-monochrome" description:"Force the use of color." env:"JLOG_FORCE_COLOR"`
-	Profile      string   `long:"profile" description:"If set, collect a CPU profile and write it to this file."`
+	MatchRegex   string             `short:"g" long:"regex" description:"A regular expression that removes lines from the output that don't match, like grep."`
+	NoMatchRegex string             `short:"G" long:"no-regex" description:"A regular expression that removes lines from the output that DO match, like 'grep -v'."`
+	RegexpScope  *parse.RegexpScope `short:"S" long:"regex-scope" description:"Where to apply the provided regex; (m)essage, (k)eys, or (v)alues. 'kmv' looks in all scopes, 'k' only searches keys, etc." default:"kmv"`
+	JQ           string             `short:"e" long:"jq" description:"A jq program to run on each record in the processed input; use this to ignore certain lines, add fields, etc.  Hint: 'select(condition)' will remove lines that don't match 'condition'."`
+	JQSearchPath []string           `long:"jq-search-path" env:"JLOG_JQ_SEARCH_PATH" description:"A list of directories in which to search for JQ modules.  A path entry named (not merely ending in) .jq is automatically loaded.  When set through the environment, use ':' as the delimiter (like $PATH)." default:"~/.jq" default:"~/.jlog/jq/.jq" default:"~/.jlog/jq" env-delim:":"` //nolint
+	NoColor      bool               `short:"M" long:"no-color" description:"Disable the use of color." env:"JLOG_FORCE_MONOCHROME"`
+	NoMonochrome bool               `short:"c" long:"no-monochrome" description:"Force the use of color." env:"JLOG_FORCE_COLOR"`
+	Profile      string             `long:"profile" description:"If set, collect a CPU profile and write it to this file."`
 
 	Version bool `short:"v" long:"version" description:"Print version information and exit."`
 }
@@ -181,6 +182,9 @@ func NewFilterScheme(gen General) (*parse.FilterScheme, error) { //nolint
 	}
 	if err := fsch.AddJQ(gen.JQ, &parse.JQOptions{SearchPath: gen.JQSearchPath}); err != nil {
 		return nil, fmt.Errorf("adding JQ: %v", err)
+	}
+	if gen.RegexpScope != nil {
+		fsch.Scope = *gen.RegexpScope
 	}
 	return fsch, nil
 }

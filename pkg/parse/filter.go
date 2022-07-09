@@ -1,10 +1,12 @@
 package parse
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 
 	"github.com/itchyny/gojq"
 )
@@ -14,6 +16,7 @@ type FilterScheme struct {
 	JQ           *gojq.Code
 	MatchRegex   *regexp.Regexp
 	NoMatchRegex *regexp.Regexp
+	Scope        RegexpScope
 }
 
 // DefaultVariables are variables available to JQ programs.
@@ -123,24 +126,87 @@ func (f *FilterScheme) runJQ(l *line) (bool, error) {
 	return filtered, nil
 }
 
-// regexpScope determines what fields a regexp should run against.  Not implemented yet.
-type regexpScope int
+// RegexpScope determines what fields a regexp should run against.
+type RegexpScope int
 
 const (
-	regexpScopeUnknown regexpScope = iota
-	regexpScopeMessage
+	RegexpScopeMessage = 1 << iota
+	RegexpScopeKeys
+	RegexpScopeValues
 )
 
-// runRegexp runs the regexp, returning whether or not it matched.
-func runRegexp(rx *regexp.Regexp, l *line, scope regexpScope) bool {
-	var input string
-	switch scope {
-	case regexpScopeUnknown:
-		panic("unknown regexp scope")
-	case regexpScopeMessage:
-		input = l.msg
+func (s RegexpScope) String() string {
+	var parts []string
+	if s&RegexpScopeMessage > 0 {
+		parts = append(parts, "m")
 	}
+	if s&RegexpScopeKeys > 0 {
+		parts = append(parts, "k")
+	}
+	if s&RegexpScopeValues > 0 {
+		parts = append(parts, "v")
+	}
+	return strings.Join(parts, "")
+}
 
+func (s *RegexpScope) UnmarshalText(text []byte) error {
+	for _, b := range text {
+		switch b {
+		case 'm':
+			*s |= RegexpScopeMessage
+		case 'k':
+			*s |= RegexpScopeKeys
+		case 'v':
+			*s |= RegexpScopeValues
+		default:
+			return fmt.Errorf("unrecognized scope character '%c'; [kmv] are recognized", b)
+		}
+	}
+	return nil
+}
+
+func (s RegexpScope) MarshalFlag() string              { return s.String() }
+func (s *RegexpScope) UnmarshalFlag(text string) error { return s.UnmarshalText([]byte(text)) }
+
+// runRegexp runs the regexp, returning whether or not it matched.
+func runRegexp(rx *regexp.Regexp, l *line, scope RegexpScope) bool {
+	if scope&RegexpScopeMessage > 0 {
+		if applyRegexp(rx, l, l.msg) {
+			return true
+		}
+	}
+	if scope&RegexpScopeKeys > 0 {
+		for k := range l.fields {
+			if applyRegexp(rx, l, k) {
+				return true
+			}
+		}
+	}
+	if scope&RegexpScopeValues > 0 {
+		var addErr error
+		for _, v := range l.fields {
+			j, err := json.Marshal(v)
+			if err != nil {
+				// This is very unlikely to happen, but Go code can mutate l.fields
+				// to produce something unmarshalable.
+				addErr = err
+				continue
+			}
+			if applyRegexp(rx, l, string(j)) {
+				return true
+			}
+		}
+		// This is done so that regexps can't match the error message we generate here.
+		if addErr != nil {
+			l.fields["jlog_match_marshal_error"] = addErr.Error()
+		}
+	}
+	return false
+}
+
+// applyRegexp runs the regexp against the provided input, modifying the line in-place and retruning
+// whether the regexp matched.
+func applyRegexp(rx *regexp.Regexp, l *line, input string) bool {
 	fields := rx.FindStringSubmatch(input)
 	if len(fields) == 0 {
 		return false
@@ -162,12 +228,12 @@ func runRegexp(rx *regexp.Regexp, l *line, scope regexpScope) bool {
 func (f *FilterScheme) Run(l *line) (bool, error) {
 	rxFiltered := false
 	if rx := f.NoMatchRegex; rx != nil {
-		if found := runRegexp(rx, l, regexpScopeMessage); found {
+		if found := runRegexp(rx, l, f.Scope); found {
 			rxFiltered = true
 		}
 	}
 	if rx := f.MatchRegex; rx != nil {
-		if found := runRegexp(rx, l, regexpScopeMessage); !found {
+		if found := runRegexp(rx, l, f.Scope); !found {
 			rxFiltered = true
 		}
 	}
