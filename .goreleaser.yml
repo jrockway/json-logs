@@ -3,7 +3,6 @@ env_files:
     github_token: ~/.github_token
 before:
     hooks:
-        - go mod tidy
         - go test ./...
         - golangci-lint run
 builds:
@@ -50,7 +49,7 @@ archives:
 checksum:
     name_template: "checksums.txt"
 snapshot:
-    name_template: "{{ slice .Tag 1 }}-next"
+    name_template: "{{ slice .Tag }}-next"
 changelog:
     sort: asc
     filters:
