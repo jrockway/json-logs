@@ -34,31 +34,40 @@ The format is automatically guessed, and timestamps will appear in your local ti
 
 Here's the `--help` message:
 
-    jlog [OPTIONS]
+      jlog [OPTIONS]
 
     Input Schema:
-      -l, --lax              If true, suppress any validation errors including non-JSON log lines and missing timestamps, levels, and message.  We extract as many of those as we can, but if something is missing,
-                             the errors will be silently discarded. [$JLOG_LAX]
+      -l, --lax              If true, suppress any validation errors including non-JSON log lines and missing timestamps,
+                             levels, and message.  We extract as many of those as we can, but if something is missing, the
+                             errors will be silently discarded. [$JLOG_LAX]
           --levelkey=        JSON key that holds the log level. [$JLOG_LEVEL_KEY]
           --nolevelkey       If set, don't look for a log level, and don't display levels. [$JLOG_NO_LEVEL_KEY]
           --timekey=         JSON key that holds the log timestamp. [$JLOG_TIMESTAMP_KEY]
           --notimekey        If set, don't look for a time, and don't display times. [$JLOG_NO_TIMESTAMP_KEY]
           --messagekey=      JSON key that holds the log message. [$JLOG_MESSAGE_KEY]
-          --nomessagekey     If set, don't look for a message, and don't display messages (time/level + fields only). [$JLOG_NO_MESSAGE_KEY]
+          --nomessagekey     If set, don't look for a message, and don't display messages (time/level + fields only).
+                             [$JLOG_NO_MESSAGE_KEY]
           --delete=          JSON keys to be deleted before JQ processing and output; repeatable. [$JLOG_DELETE_KEYS]
-          --upgrade=         JSON key (of type object) whose fields should be merged with any other fields; good for loggers that always put structed data in a separate key; repeatable.
-                             --upgrade b would transform as follows: {a:'a', b:{'c':'c'}} -> {a:'a', c:'c'} [$JLOG_UPGRADE_KEYS]
+          --upgrade=         JSON key (of type object) whose fields should be merged with any other fields; good for
+                             loggers that always put structed data in a separate key; repeatable.
+                             --upgrade b would transform as follows: {a:'a', b:{'c':'c'}} -> {a:'a', c:'c'}
+                             [$JLOG_UPGRADE_KEYS]
 
     Output Format:
-          --no-elide         Disable eliding repeated fields.  By default, fields that have the same value as the line above them have their values replaced with '↑'. [$JLOG_NO_ELIDE_DUPLICATES]
-      -r, --relative         Print timestamps as a duration since the program started instead of absolute timestamps. [$JLOG_RELATIVE_TIMESTAMPS]
-      -t, --time-format=     A go time.Format string describing how to format timestamps, or one of 'rfc3339(milli|micro|nano)', 'unix', 'stamp(milli|micro|nano)', or 'kitchen'. (default: stamp)
-                             [$JLOG_TIME_FORMAT]
-      -s, --only-subseconds  Display only the fractional part of times that are in the same second as the last log line.  Only works with the (milli|micro|nano) formats above.  (This can be revisited, but it's
+          --no-elide         Disable eliding repeated fields.  By default, fields that have the same value as the line
+                             above them have their values replaced with '↑'. [$JLOG_NO_ELIDE_DUPLICATES]
+      -r, --relative         Print timestamps as a duration since the program started instead of absolute timestamps.
+                             [$JLOG_RELATIVE_TIMESTAMPS]
+      -t, --time-format=     A go time.Format string describing how to format timestamps, or one of
+                             'rfc3339(milli|micro|nano)', 'unix', 'stamp(milli|micro|nano)', or 'kitchen'. (default:
+                             stamp) [$JLOG_TIME_FORMAT]
+      -s, --only-subseconds  Display only the fractional part of times that are in the same second as the last log line.
+                             Only works with the (milli|micro|nano) formats above.  (This can be revisited, but it's
                              complicated.) [$JLOG_ONLY_SUBSECONDS]
           --no-summary       Suppress printing the summary at the end. [$JLOG_NO_SUMMARY]
       -p, --priority=        A list of fields to show first; repeatable. [$JLOG_PRIORITY_FIELDS]
-      -H, --highlight=       A list of fields to visually distinguish; repeatable. (default: err, error, warn, warning) [$JLOG_HIGHLIGHT_FIELDS]
+      -H, --highlight=       A list of fields to visually distinguish; repeatable. (default: err, error, warn, warning)
+                             [$JLOG_HIGHLIGHT_FIELDS]
       -A, --after-context=   Print this many filtered lines after a non-filtered line (like grep). (default: 0)
       -B, --before-context=  Print this many filtered lines before a non-filtered line (like grep). (default: 0)
       -C, --context=         Print this many context lines around each match (like grep). (default: 0)
@@ -66,10 +75,16 @@ Here's the `--help` message:
     General:
       -g, --regex=           A regular expression that removes lines from the output that don't match, like grep.
       -G, --no-regex=        A regular expression that removes lines from the output that DO match, like 'grep -v'.
-      -e=                    A jq program to run on each record in the processed input; use this to ignore certain lines, add fields, etc.  Hint: 'select(condition)' will remove lines that don't match 'condition'.
+      -S, --regex-scope=     Where to apply the provided regex; (m)essage, (k)eys, or (v)alues. 'kmv' looks in all scopes,
+                             'k' only searches keys, etc. (default: kmv)
+      -e, --jq=              A jq program to run on each record in the processed input; use this to ignore certain lines,
+                             add fields, etc.  Hint: 'select(condition)' will remove lines that don't match 'condition'.
+          --jq-search-path=  A list of directories in which to search for JQ modules.  A path entry named (not merely
+                             ending in) .jq is automatically loaded.  When set through the environment, use ':' as the
+                             delimiter (like $PATH). (default: ~/.jq, ~/.jlog/jq/.jq, ~/.jlog/jq) [$JLOG_JQ_SEARCH_PATH]
       -M, --no-color         Disable the use of color. [$JLOG_FORCE_MONOCHROME]
-      -C, --no-monochrome    Force the use of color. Note: the short flag will change in a future release.
-      --profile=             If set, collect a CPU profile and write it to this file.
+      -c, --no-monochrome    Force the use of color. [$JLOG_FORCE_COLOR]
+          --profile=         If set, collect a CPU profile and write it to this file.
       -v, --version          Print version information and exit.
 
     Help Options:
@@ -156,6 +171,18 @@ decisions on that, or delete fields, or add new fields.
 
 The JQ program is run after schema detection and validation.
 
+`--jq-search-path` lets you set up a list of locations to search for jq modules. Items with the
+filename `.jq` (not _ending_ in `.jq`, literally that exact name) are automatically imported. The
+default value reads `~/.jq` (which `jq` itself also reads), `~/.jlog/.jq`, and can load modules
+(with `include` or `import`) from `~/.jlog/jq/*`.
+
+I put common `jq` snippets in `~/.jq` to save myself some typing; adding
+`def nh: select(.method != "grpc.health.v1.Health.Check ");` to that file then lets you run
+`jlog -e nh` and see the logs with messages about health checks filtered out. (I also have
+`def flat: [leaf_paths as $path | {"key": $path | join("."), "value": getpath($path)}] | from_entries;`
+which will explode nested objects into their own keys, allowing features like `--elide` to work on
+nested objects where some fields change between lines.)
+
 ### Regular expressions
 
 You can pass `-g <regex>` to only show lines that match the provided regex. `-G` does the opposite,
@@ -167,6 +194,11 @@ filter the line out. (It can't add back a filtered line, though.)
 Any captures in the regex match become fields in the output (and for JQ to inspect). By default,
 they are named `$1`, `$2`, etc. but you can choose your own name with the
 `(?P<name>regex goes here)` syntax.
+
+By default, regexes are run on the parsed message, field keys, and JSON-marshaled field values. You
+can customize this by passing `-S` or `--regex-scope`. A value of `kv` would only match keys and
+values, for example. Matching is stopped as soon as match is found; use a `jq` program if you want
+to find all matches and analyze them.
 
 ## Highlighting
 
