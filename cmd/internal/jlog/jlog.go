@@ -159,10 +159,10 @@ func NewOutputFormatter(out Output, gen General) (*parse.OutputSchema, error) { 
 	}
 
 	// Let -A and -B override -C.
-	if a := outs.AfterContext; a > 0 {
+	if a := out.AfterContext; a > 0 {
 		outs.AfterContext = a
 	}
-	if b := outs.BeforeContext; b > 0 {
+	if b := out.BeforeContext; b > 0 {
 		outs.BeforeContext = b
 	}
 
