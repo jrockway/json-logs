@@ -185,7 +185,7 @@ func FuzzDefaultTimeParser(f *testing.F) {
 	f.Add(`{"seconds": 42, "nanos": 69}`)
 	f.Fuzz(func(t *testing.T, in string) {
 		// All we care about are panics.  Errors are expected.
-		DefaultTimeParser(prepareTime(in)) // nolint:errcheck
+		DefaultTimeParser(prepareTime(in)) //nolint:errcheck
 	})
 }
 
@@ -194,6 +194,6 @@ func FuzzStrictUnixTimeParser(f *testing.F) {
 	f.Add("1641092371.456")
 	f.Fuzz(func(t *testing.T, in string) {
 		// All we care about are panics.  Errors are expected.
-		StrictUnixTimeParser(prepareTime(in)) // nolint:errcheck
+		StrictUnixTimeParser(prepareTime(in)) //nolint:errcheck
 	})
 }
