@@ -394,12 +394,17 @@ func (s *InputSchema) guessSchema(l *line) {
 		s.UpgradeKeys = append(s.UpgradeKeys, "data")
 		return
 	}
-	if has("ts") && has("message") && has("workerId") && has("pipelineName") {
+	if has("ts") && has("message") && has("workerId") {
 		// Pachyderm worker logs.
 		s.TimeKey = "ts"
 		s.TimeFormat = DefaultTimeParser // RFC3339Nano
-		s.NoLevelKey = true
 		s.MessageKey = "message"
+		if has("severity") {
+			s.LevelFormat = DefaultLevelParser
+			s.LevelKey = "severity"
+		} else {
+			s.NoLevelKey = true
+		}
 		return
 	}
 }
